@@ -21,6 +21,7 @@ const TARGETS = {
   'mac-arm64': { platform: 'darwin', arch: 'arm64', os: 'mac' },
   'mac-x64': { platform: 'darwin', arch: 'x64', os: 'mac' },
   'win-x64': { platform: 'win32', arch: 'x64', os: 'win' },
+  'linux-x64': { platform: 'linux', arch: 'x64', os: 'linux' },
 } as const satisfies Record<DesktopPackageTargetName, {
   readonly platform: NodeJS.Platform
   readonly arch: string
@@ -184,6 +185,10 @@ export async function createDesktopUploadPlan(
   if (target === undefined) {
     throw new Error(`desktop upload: unsupported target ${String(targetName)}`)
   }
+  // Only macOS and Windows publish a fixed installer; the Linux AppImage stays on its release feed.
+  if (options.latest === true && target.platform !== 'darwin' && target.platform !== 'win32') {
+    throw new Error(`desktop upload: ${targetName} has no fixed installer to replace`)
+  }
   const environment = options.environment ?? process.env
   const repositoryRoot = options.repositoryRoot ?? REPOSITORY_ROOT
   const appRoot = options.appRoot ?? APP_ROOT
@@ -234,8 +239,10 @@ export async function createDesktopUploadPlan(
     throw new Error(`desktop upload: ${metadataFilename}.files must contain exactly one target update file`)
   }
 
-  const base = `deepseek-harness-${buildVersion}-${target.os}-${target.arch}`
-  const updaterExtension = target.platform === 'darwin' ? 'zip' : 'exe'
+  // electron-builder names an AppImage after the Linux architecture string rather than `x64`.
+  const artifactArch = target.platform === 'linux' ? 'x86_64' : target.arch
+  const base = `deepseek-harness-${buildVersion}-${target.os}-${artifactArch}`
+  const updaterExtension = target.platform === 'darwin' ? 'zip' : target.platform === 'linux' ? 'AppImage' : 'exe'
   const updaterInfo = updateFileInfo(metadata.files[0], `${metadataFilename}.files[0]`, `${base}.${updaterExtension}`)
   const updaterPath = await verifyChecksummedArtifact(artifactsRoot, updaterInfo)
   const artifacts: DesktopUploadArtifact[] = []
@@ -251,6 +258,13 @@ export async function createDesktopUploadPlan(
       uploadArtifact(updaterPath, binaryPrefix, 'application/zip'),
       uploadArtifact(blockmapPath, binaryPrefix, 'application/octet-stream'),
     )
+  }
+  else if (target.platform === 'linux') {
+    // An AppImage carries its blockmap inside the artifact, so metadata holds blockMapSize and no sidecar file is published.
+    const blockMapSize = object(metadata.files[0], `${metadataFilename}.files[0]`).blockMapSize
+    numberField(blockMapSize, `${metadataFilename}.files[0].blockMapSize`)
+    installerArtifact = uploadArtifact(updaterPath, binaryPrefix, 'application/octet-stream')
+    artifacts.push(installerArtifact)
   }
   else {
     const blockmapPath = await requireArtifact(artifactsRoot, `${base}.exe.blockmap`)

@@ -7,6 +7,9 @@ import { resolveWindowsPackageSettings } from '../scripts/windows-package-settin
 
 const WINDOWS = { platform: 'win32', arch: 'x64' } as const
 const MACOS = { platform: 'darwin', arch: 'arm64' } as const
+const LINUX = { platform: 'linux', arch: 'x64' } as const
+const ENV_FILES = { win32: '.env.windows', darwin: '.env.macos', linux: '.env.linux' } as const
+const TARGETS = { win32: WINDOWS, darwin: MACOS, linux: LINUX } as const
 const POLICY = { DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN: 'https://policy.example.com',
   DSH_DESKTOP_MANDATORY_UPDATE_CONFIG: JSON.stringify({ allowedAuthOrigins: ['https://login.example.com'] }) }
 const RELEASE = { ...POLICY, DSH_DESKTOP_APP_ID: 'com.example.desktop', DOWNLOAD_TEST_ORIGIN: 'https://updates.example.com',
@@ -76,10 +79,10 @@ describe('Desktop local packaging configuration', () => {
     })
   })
 
-  it.each(['win32', 'darwin'] as const)('owns the %s release ID in its platform file', async (platform) => {
+  it.each(['win32', 'darwin', 'linux'] as const)('owns the %s release ID in its platform file', async (platform) => {
     await withDirectory(async (directory) => {
       const settings = Object.entries(RELEASE).map(([name, value]) => `${name}='${value}'`).join('\n') + '\n'
-      const file = join(directory, platform === 'win32' ? '.env.windows' : '.env.macos')
+      const file = join(directory, ENV_FILES[platform])
       const parent = { DOWNLOAD_TEST_RELEASE_ID: 'a'.repeat(32) }
       await writeFile(file, settings)
       expect(loadDesktopPackageEnvironment(platform, parent, directory).DOWNLOAD_TEST_RELEASE_ID).toBe(RELEASE.DOWNLOAD_TEST_RELEASE_ID)
@@ -87,10 +90,34 @@ describe('Desktop local packaging configuration', () => {
       const missing = loadDesktopPackageEnvironment(platform, parent, directory)
       expect(missing.DOWNLOAD_TEST_RELEASE_ID).toBeUndefined()
       expect(() => {
-        validateDesktopPackageEnvironment(missing, platform === 'win32' ? WINDOWS : MACOS)
+        validateDesktopPackageEnvironment(missing, TARGETS[platform])
       }).toThrow(/DOWNLOAD_TEST_RELEASE_ID/u)
       expect(parent.DOWNLOAD_TEST_RELEASE_ID).toBe('a'.repeat(32))
     })
+  })
+
+  it('loads the Linux file and validates Linux without signing or notarization settings', async () => {
+    await withDirectory(async (directory) => {
+      expect(() => loadDesktopPackageEnvironment('linux', RELEASE, directory)).toThrow(/copy .*\.env\.linux\.example/u)
+    })
+    await withDirectory(async (directory) => {
+      await writeFile(join(directory, '.env.linux'), 'DSH_DESKTOP_APP_ID=com.example.linux\n')
+      expect(loadDesktopPackageEnvironment('linux', { DSH_DESKTOP_APP_ID: 'com.stale.desktop' }, directory))
+        .toEqual({ DSH_DESKTOP_APP_ID: 'com.example.linux' })
+      await writeFile(join(directory, '.env.linux'), 'DSH_DESKTOP_WINDOWS_TOKEN_PIN=secret-sentinel\n')
+      expect(() => loadDesktopPackageEnvironment('linux', {}, directory)).toThrow(/unsupported setting DSH_DESKTOP_WINDOWS_TOKEN_PIN/u)
+      await writeFile(join(directory, '.env.linux'), 'DSH_DESKTOP_MACOS_PACK_CONCURRENCY=2\n')
+      expect(() => loadDesktopPackageEnvironment('linux', {}, directory)).toThrow(/unsupported setting DSH_DESKTOP_MACOS_PACK_CONCURRENCY/u)
+    })
+    expect(() => {
+      validateDesktopPackageEnvironment(RELEASE, LINUX)
+    }).not.toThrow()
+    expect(() => {
+      validateDesktopPackageEnvironment({ ...POLICY, DSH_DESKTOP_APP_ID: RELEASE.DSH_DESKTOP_APP_ID }, LINUX, { prepareOnly: true })
+    }).not.toThrow()
+    expect(() => {
+      validateDesktopPackageEnvironment({ ...POLICY, DSH_DESKTOP_APP_ID: RELEASE.DSH_DESKTOP_APP_ID }, LINUX)
+    }).toThrow(/DOWNLOAD_TEST_ORIGIN/u)
   })
 
   it('loads mandatory update origins and options only from the platform file without changing its parent', async () => {

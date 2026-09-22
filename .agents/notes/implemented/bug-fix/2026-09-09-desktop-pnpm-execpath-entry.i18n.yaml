@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for 2026-09-09-desktop-pnpm-execpath-entry.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-09-desktop-pnpm-execpath-entry.md
+/agent-note-desktop-packaging-executes-pnpm-through-its-own-entry:
+  en: 0896910f2d54e8a2
+  zh: 7f95c4c245dadfc8
+/agent-note-desktop-packaging-executes-pnpm-through-its-own-entry/problem:
+  en: cefcc3fc35056236
+  zh: db02efa7d28f6883
+/agent-note-desktop-packaging-executes-pnpm-through-its-own-entry/decision:
+  en: 96c439ee402e5cd2
+  zh: 755acd1316394f47
+/agent-note-desktop-packaging-executes-pnpm-through-its-own-entry/alternatives-considered:
+  en: bcf4d01ff89404d4
+  zh: b8cb868678548407
+/agent-note-desktop-packaging-executes-pnpm-through-its-own-entry/consequences:
+  en: 73de8314ec696d0e
+  zh: 4873d7eb457302be
+/agent-note-desktop-packaging-executes-pnpm-through-its-own-entry/testing:
+  en: 3bf8c784b80ecdb7
+  zh: 1b104349cd8d8407
+/agent-note-desktop-packaging-executes-pnpm-through-its-own-entry/related:
+  en: 9241c5ce1b3fbdb1
+  zh: 6c470c4d85ec3102

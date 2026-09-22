@@ -232,6 +232,8 @@ export function createElectronBuilderConfig(
     },
     linux: {
       category: 'Development',
+      // electron-builder otherwise derives the executable name from the scoped package name.
+      executableName: 'deepseek-harness',
       target: ['AppImage'],
     },
     nsis: {

@@ -48,8 +48,10 @@ async function fixture(
   await writeFile(join(repositoryRoot, 'package.json'), `${JSON.stringify({ version })}\n`)
   await writeFile(join(appRoot, 'package.json'), `${JSON.stringify({ version })}\n`)
 
-  const [os, arch] = target.split('-') as ['mac' | 'win', 'arm64' | 'x64']
-  const base = `deepseek-harness-${version}-${os}-${arch}`
+  const [os, arch] = target.split('-') as ['mac' | 'win' | 'linux', 'arm64' | 'x64']
+  // electron-builder names an AppImage after the Linux architecture string rather than `x64`.
+  const artifactArch = os === 'linux' ? 'x86_64' : arch
+  const base = `deepseek-harness-${version}-${os}-${artifactArch}`
   const origin = environment === 'test'
     ? TEST_ORIGIN
     : 'https://download.deepseek.com'
@@ -70,6 +72,20 @@ async function fixture(
       version,
       path: `${base}.zip`,
       files: [{ url: `${base}.zip`, size: Buffer.byteLength(zip), sha512: digest(zip) }],
+    })}\n`)
+  }
+  else if (os === 'linux') {
+    const executable = 'AppImage fixture'
+    await writeFile(join(artifactsRoot, `${base}.AppImage`), executable)
+    await writeFile(join(artifactsRoot, desktopUpdateMetadataFilename(version, 'linux')), `${JSON.stringify({
+      version,
+      path: `${base}.AppImage`,
+      files: [{
+        url: `${base}.AppImage`,
+        size: Buffer.byteLength(executable),
+        sha512: digest(executable),
+        blockMapSize: 128,
+      }],
     })}\n`)
   }
   else {
@@ -212,11 +228,12 @@ describe('desktop upload plan', () => {
     })
   })
 
-  it.each(['mac-arm64', 'mac-x64', 'win-x64'] as const)('publishes every %s object and YAML reference inside the test release directory', async (target) => {
+  it.each(['mac-arm64', 'mac-x64', 'win-x64', 'linux-x64'] as const)('publishes every %s object and YAML reference inside the test release directory', async (target) => {
     const paths = await fixture(target)
     const plan = await createDesktopUploadPlan(target, paths)
     const prefix = `dsh-desk/${RELEASE_ID}`
-    const payload = plan.artifacts.find(artifact => artifact.filename.endsWith(target === 'win-x64' ? '.exe' : '.zip'))!
+    const payloadExtension = target === 'win-x64' ? '.exe' : target === 'linux-x64' ? '.AppImage' : '.zip'
+    const payload = plan.artifacts.find(artifact => artifact.filename.endsWith(payloadExtension))!
     for (const artifact of plan.artifacts) {
       expect(artifact.key).toBe(`${prefix}/${artifact.channelMetadata ? 'feeds' : 'bin'}/${target}/${artifact.filename}`)
       if (artifact.channelMetadata) {
@@ -249,6 +266,47 @@ describe('desktop upload plan', () => {
       'deepseek-harness-1.2.3-alpha.4-mac-arm64.zip.blockmap',
       'nightly-mac.yml',
     ])
+  })
+
+  it('validates the Linux AppImage with its embedded blockmap and publishes both channels', async () => {
+    const paths = await fixture('linux-x64')
+    const plan = await createDesktopUploadPlan('linux-x64', paths)
+    expect(plan.artifacts.map(artifact => artifact.filename)).toEqual([
+      'deepseek-harness-1.2.3-linux-x86_64.AppImage',
+      'nightly-linux.yml',
+      'latest-linux.yml',
+    ])
+    expect(plan).toMatchObject({
+      publicUrl: `https://desktop-updates.example.com/dsh-desk/${RELEASE_ID}/feeds/linux-x64/`,
+      bucket: TEST_BUCKET,
+    })
+    expect(load(plan.artifacts[1]!.contents!)).toMatchObject({
+      files: [{
+        url: `${TEST_ORIGIN}/dsh-desk/${RELEASE_ID}/bin/linux-x64/deepseek-harness-1.2.3-linux-x86_64.AppImage`,
+        blockMapSize: 128,
+      }],
+    })
+  })
+
+  it('rejects a Linux AppImage whose metadata omits the embedded blockmap size', async () => {
+    const paths = await fixture('linux-x64')
+    const metadataPath = join(paths.artifactsRoot, 'nightly-linux.yml')
+    const appImage = 'AppImage fixture'
+    await writeFile(metadataPath, `${JSON.stringify({
+      version: '1.2.3',
+      files: [{
+        url: 'deepseek-harness-1.2.3-linux-x86_64.AppImage',
+        size: Buffer.byteLength(appImage),
+        sha512: digest(appImage),
+      }],
+    })}\n`)
+    await expect(createDesktopUploadPlan('linux-x64', paths)).rejects.toThrow(/blockMapSize/u)
+  })
+
+  it('rejects the fixed installer for a target that publishes only a release feed', async () => {
+    const paths = await fixture('linux-x64')
+    await expect(createDesktopUploadPlan('linux-x64', { ...paths, latest: true }))
+      .rejects.toThrow(/linux-x64 has no fixed installer/u)
   })
 
   it('validates the Windows installer with the emitted external blockmap and production destination', async () => {

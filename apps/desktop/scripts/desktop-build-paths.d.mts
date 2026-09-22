@@ -30,6 +30,13 @@ export function resolveDesktopBuildTarget(
 ): DesktopAutoUpdateTarget
 
 /**
+ * Return the Electron executable inside one prepared Electron distribution.
+ * @param platform - Target Node.js platform.
+ * @returns Path relative to the extracted Electron directory.
+ */
+export function desktopElectronExecutable(platform: NodeJS.Platform): string
+
+/**
  * Return the mutable preparation and artifact directories owned by one release target.
  * @param target - Supported Desktop target name.
  * @returns Target paths plus the shared immutable download cache.
@@ -43,7 +50,7 @@ export function desktopTargetBuildPaths(target: DesktopAutoUpdateTarget): Deskto
  * @returns Platform and architecture of the prepared payload.
  */
 export function desktopTargetPlatform(target: DesktopAutoUpdateTarget): {
-  readonly platform: 'darwin' | 'win32'
+  readonly platform: 'darwin' | 'win32' | 'linux'
   readonly arch: 'arm64' | 'x64'
 }
 

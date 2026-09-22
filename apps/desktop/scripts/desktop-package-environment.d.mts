@@ -1,5 +1,8 @@
 /** Load platform-local release settings without changing the caller's process environment. */
 
+/** Platform that owns one local dotenv file. */
+export type DesktopPackagePlatform = 'darwin' | 'win32' | 'linux'
+
 /**
  * Read the target's required UTF-8 dotenv file; release settings never fall back to ambient values.
  * @param platform Target platform.
@@ -8,7 +11,7 @@
  * @returns Isolated environment with file-owned release settings.
  */
 export function loadDesktopPackageEnvironment(
-  platform: 'win32' | 'darwin',
+  platform: DesktopPackagePlatform,
   environment?: NodeJS.ProcessEnv,
   appRoot?: string,
 ): NodeJS.ProcessEnv
@@ -22,6 +25,6 @@ export function loadDesktopPackageEnvironment(
  */
 export function validateDesktopPackageEnvironment(
   environment: NodeJS.ProcessEnv,
-  target: { platform: 'win32' | 'darwin', arch: string },
+  target: { platform: DesktopPackagePlatform, arch: string },
   options?: { unsigned?: boolean, prepareOnly?: boolean },
 ): void

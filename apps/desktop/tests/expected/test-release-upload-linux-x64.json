@@ -1,0 +1,13 @@
+[
+  {
+    "key": "dsh-desk/0123456789abcdef0123456789abcdef/bin/linux-x64/deepseek-harness-1.2.3-linux-x86_64.AppImage"
+  },
+  {
+    "key": "dsh-desk/0123456789abcdef0123456789abcdef/feeds/linux-x64/nightly-linux.yml",
+    "contents": "version: 1.2.3\npath: >-\n  https://desktop-updates.example.com/dsh-desk/0123456789abcdef0123456789abcdef/bin/linux-x64/deepseek-harness-1.2.3-linux-x86_64.AppImage\nfiles:\n  - url: >-\n      https://desktop-updates.example.com/dsh-desk/0123456789abcdef0123456789abcdef/bin/linux-x64/deepseek-harness-1.2.3-linux-x86_64.AppImage\n    size: 16\n    sha512: >-\n      X1auyn53SCE/EB10wMveX5lOUNaj9Q7Yi1+eb4zLkq+jyK2Bamgwz+m7CoEWX7jgBSwbSRP8LNAQhQIdxJaCDw==\n    blockMapSize: 128\n"
+  },
+  {
+    "key": "dsh-desk/0123456789abcdef0123456789abcdef/feeds/linux-x64/latest-linux.yml",
+    "contents": "version: 1.2.3\npath: >-\n  https://desktop-updates.example.com/dsh-desk/0123456789abcdef0123456789abcdef/bin/linux-x64/deepseek-harness-1.2.3-linux-x86_64.AppImage\nfiles:\n  - url: >-\n      https://desktop-updates.example.com/dsh-desk/0123456789abcdef0123456789abcdef/bin/linux-x64/deepseek-harness-1.2.3-linux-x86_64.AppImage\n    size: 16\n    sha512: >-\n      X1auyn53SCE/EB10wMveX5lOUNaj9Q7Yi1+eb4zLkq+jyK2Bamgwz+m7CoEWX7jgBSwbSRP8LNAQhQIdxJaCDw==\n    blockMapSize: 128\n"
+  }
+]
