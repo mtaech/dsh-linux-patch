@@ -16,6 +16,7 @@ application could even be launched.
 | 2 | Packaged smoke fails with `Cannot find module .../app.asar/.../raster-worker.js` | plain Node child vs ASAR |
 | 3 | Office conversion fails: `Installed LibreOfficeKit package is incomplete: @deepseek-ai/libreoffice-kit-linux-x64-glibc` | kit existence probe inside an archive |
 | 4 | The application exits immediately after launch; the desktop shell reports the failed launch | Linux package carrying a macOS/Windows-only policy |
+| 5 | A running window shows a placeholder icon in the taskbar under Wayland | Electron's application id comes from the packaged package name, which no shipped desktop entry matches, and no window carried an icon of its own |
 
 ## Root cause 1: Electron's leaked GLib symbols displace the statically linked one in libvips
 
@@ -81,6 +82,25 @@ if (!['win32', 'darwin'].includes(process.platform) || !['x64', 'arm64'].include
 target, so the Linux application threw during startup and exited — which the desktop shell surfaced
 as a failed launch.
 
+## Root cause 5: the window's application identity and icon
+
+Measured with `WAYLAND_DEBUG=1` against the packaged application:
+
+```
+set_app_id("deepseek-ai-dsh-desktop")        ← the packaged package name, sanitized
+caption:     DeepSeek Harness                ← KWin's view of the same window
+desktopFile: deepseek-ai-dsh-desktop         ← the entry KWin looks for
+```
+
+The packaged entry is `deepseek-harness.desktop`, so the taskbar matched no application: it grouped
+and pinned the window separately and showed a placeholder. Electron reads the desktop-file name
+before a main script runs — setting `CHROME_DESKTOP` there does not help (verified) — but
+`app.setDesktopName()` does, and it does not change `app.getName()` or the user-data directory.
+
+Separately, no window passed an `icon` option. Wayland carries a window icon through
+`xdg-toplevel-icon-v1` and X11 through `_NET_WM_ICON`, so a window that sets none shows a placeholder
+even when a matching entry is installed.
+
 ## Fixes
 
 **Raster work leaves the Electron process on Linux.** Five modules implement the boundary:
@@ -106,6 +126,11 @@ script resolves to its `app.asar.unpacked` sibling whenever the module itself si
 their unpacked copies, where an absent path is absent for the kit's probe and for the native child
 processes that read those files.
 
+**Windows carry their application identity and icon.** `main.ts` sets Electron's desktop-file name
+to `deepseek-harness.desktop`, the entry the packaging names from `executableName` and whose
+`StartupWMClass` records the same value, and `window-icon.ts` supplies the packaged icon to every
+Desktop window.
+
 **Policy resolution is platform-aware.** `resolveDesktopPolicyEnvironment(environment, platform)`
 returns no policy for any target other than macOS and Windows, the packaged metadata is written only
 when a policy exists, and a Linux dotenv file rejects the mandatory-update settings instead of
@@ -120,6 +145,8 @@ recording enforcement that cannot happen.
 | `smoke-packaged-runtime` (ASAR) | passes: `"raster":true`, `DOCX, XLSX, PPTX to PDF and skill CLI discovery passed` |
 | Packaged manifest | `dshMandatoryUpdatePolicy present: false` |
 | Application launch | reaches `dsh web: http://127.0.0.1:19387/?token=…` |
+| Wayland window identity | `set_app_id("deepseek-harness")` matching the packaged `deepseek-harness.desktop` |
+| Wayland window icon | `xdg_toplevel_icon_manager_v1.create_icon → add_buffer → set_icon` |
 | Unit tests (attachment-local, desktop-host, desktop policy/environment) | 215 passing; `attachment-local` at 100% per-file coverage |
 | `tsc -b tsconfig.host.json`, oxlint | clean |
 | `verify-cordis-config`, config catalog, bilingual pairing | 213 config files pass, catalog regenerated, 1161 pairs consistent |
@@ -127,6 +154,7 @@ recording enforcement that cannot happen.
 ## Commits
 
 ```
+819317c60b fix(desktop): give Linux windows their application identity and icon
 d020540c38 docs: record the Linux raster worker, kit resolution, and policy scope
 8e49e39825 fix(desktop): keep the mandatory-update policy out of Linux packages
 4cf09b8432 fix(desktop-host): resolve the Office kit closure to its unpacked files
@@ -136,6 +164,9 @@ d020540c38 docs: record the Linux raster worker, kit resolution, and policy scop
 
 ## Known limitations
 
+- An existing desktop entry installed from an earlier build still records
+  `StartupWMClass=DeepSeek Harness`. The window id now matches the entry *file name*, so the icon
+  resolves; reinstalling the entry refreshes the class.
 - Launched from a KDE file manager, Dolphin's systemd service path can reject a long AppImage path
   with `Invalid unit name or type`; running the AppImage from a terminal or extracting it avoids that
   KDE-side behaviour.
@@ -152,4 +183,6 @@ GLib，而 Electron 链接系统 GLib 并把符号泄漏进进程空间，导致
 Electron 会把从未解包的路径报告为存在，修法是把 worker 与 Sharp 的 JavaScript 保留为物理文件并把
 asar 路径映射到 `app.asar.unpacked`；③Office kit 用同一种探测判断原生引擎是否安装，在归档内必然误判，
 于是拒绝回退 WASM，修法是把整个 kit 闭包解析到物理解包目录；④Linux 包内嵌了运行时只支持 macOS/Windows
-的强更策略，应用启动即抛错退出，修法是策略解析按平台返回、Linux 的 dotenv 拒绝这些设置。
+的强更策略，应用启动即抛错退出，修法是策略解析按平台返回、Linux 的 dotenv 拒绝这些设置；⑤任务栏没有图标，
+因为窗口的 application id 取自打包的包名、没有任何 desktop 条目与之匹配，且窗口自身未设置图标，修法是把
+desktop 文件名设为随包条目名并让每个窗口携带应用图标。
