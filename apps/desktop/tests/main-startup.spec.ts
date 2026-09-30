@@ -161,7 +161,6 @@ const harness = await vi.hoisted(async () => {
     setAppLogsPath: vi.fn(),
     getPath: vi.fn<(name: string) => string>(),
     setAboutPanelOptions: vi.fn<(options: Electron.AboutPanelOptionsOptions) => void>(),
-    setDesktopName: vi.fn<(name: string) => void>(),
     requestSingleInstanceLock: () => true,
     setAsDefaultProtocolClient: vi.fn(),
     exit: vi.fn(),

@@ -46,7 +46,7 @@ Windows 在整个运行期间常驻托盘图标。悬停提示为产品名，单
 
 ## 关键技术决策
 
-Linux 把该图案与应用身份连接起来：宿主把 Electron 的 desktop 文件名设为 `deepseek-harness.desktop`，即打包依据 `executableName` 命名并写入 `StartupWMClass` 的条目，窗口管理器因此把每个窗口归入该应用。每个窗口还会在自身选项中携带应用图标，因为 Wayland 通过 `xdg-toplevel-icon-v1` 传递任务栏图标、X11 则记为 `_NET_WM_ICON`；未设置图标的窗口即使存在匹配条目也只显示占位图。设计师原稿位于 `resources/icon.png` 和 `resources/icon.svg`；平台适配保留鲸鱼与渐变，分别位于 `resources/icon-windows.*` 和 `resources/icon-macos.*`。将各平台 SVG 导出为透明的 1024×1024 PNG。electron-builder 为 Windows 应用、安装程序和卸载程序生成多尺寸 ICO（[Windows 图标要求](https://learn.microsoft.com/en-us/windows/apps/design/iconography/app-icon-construction)）。安装页面在两种主题下使用匹配的图案；卸载程序的欢迎和完成页共用 `installer/assets/uninstaller-sidebar.png`，准备阶段将其转换为 164×314 BMP。
+Linux 把该图案与应用身份连接起来：包内声明 `desktopName`，Electron 将其作为窗口的 application id 上报，electron-builder 也用它命名 desktop 条目、其图标引用与 `StartupWMClass`，窗口管理器因此把每个窗口归入该应用。该条目在应用菜单中把应用显示为 **dsh-desktop**。每个窗口还会在自身选项中携带应用图标，因为 Wayland 通过 `xdg-toplevel-icon-v1` 传递任务栏图标、X11 则记为 `_NET_WM_ICON`；未设置图标的窗口即使存在匹配条目也只显示占位图。设计师原稿位于 `resources/icon.png` 和 `resources/icon.svg`；平台适配保留鲸鱼与渐变，分别位于 `resources/icon-windows.*` 和 `resources/icon-macos.*`。将各平台 SVG 导出为透明的 1024×1024 PNG。electron-builder 为 Windows 应用、安装程序和卸载程序生成多尺寸 ICO（[Windows 图标要求](https://learn.microsoft.com/en-us/windows/apps/design/iconography/app-icon-construction)）。安装页面在两种主题下使用匹配的图案；卸载程序的欢迎和完成页共用 `installer/assets/uninstaller-sidebar.png`，准备阶段将其转换为 164×314 BMP。
 
 快捷键覆盖保存在 `app.getPath('userData')/keybindings.json`，与 `DSH_HOME` 分离。主进程校验并串行保存修改后才发布已接受键位。读取失败保留上次接受的键位并阻止编辑，包括全部恢复；不可读和未来版本的文件保持不变。开发时可通过 `DSH_DESKTOP_USER_DATA_DIR` 隔离这些偏好，启动器会输出解析后的路径。格式和冲突语义见[快捷键服务](../../packages/client/shortcuts/README.zh.md)。
 
