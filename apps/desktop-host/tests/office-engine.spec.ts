@@ -22,22 +22,32 @@ function fixture(runtimeName = 'dsh') {
     mkdirSync(dirname(path), { recursive: true })
     writeFileSync(path, JSON.stringify({ name: '@deepseek-ai/libreoffice-kit-darwin-arm64', path: realpathSync(dirname(path)) }))
   }
-  const api = join(runtime, 'node_modules/@deepseek-ai/libreoffice-kit/package.json')
-  mkdirSync(dirname(api), { recursive: true })
-  writeFileSync(api, '{"name":"@deepseek-ai/libreoffice-kit"}')
+  const api = 'node_modules/@deepseek-ai/libreoffice-kit/package.json'
+  const wasm = 'node_modules/@deepseek-ai/libreoffice-kit-wasm/package.json'
+  for (const base of [runtime, join(root, 'app.asar.unpacked', runtimeName)]) {
+    const name = base === runtime ? 'archived' : 'unpacked'
+    for (const entry of [api, wasm]) {
+      const path = join(base, entry)
+      mkdirSync(dirname(path), { recursive: true })
+      writeFileSync(path, JSON.stringify({ name: entry.includes('wasm') ? '@deepseek-ai/libreoffice-kit-wasm' : '@deepseek-ai/libreoffice-kit', root: name }))
+    }
+  }
   const require: (specifier: string) => unknown = createRequire(join(runtime, 'package.json'))
   const hook = installOfficeEngineResolution(runtime)!
   hooks.push(hook)
   return { root, runtime, manifest, require }
 }
 
-it('resolves engine manifests to physical directories and leaves unrelated modules alone', () => {
+it('resolves the kit closure to physical directories and leaves unrelated modules alone', () => {
   const f = fixture()
   // Node 24.13 require.resolve bypasses hooks; Electron's require.resolve is covered by packaged Office smoke.
   expect(f.require('@deepseek-ai/libreoffice-kit-darwin-arm64/package.json'))
     .toMatchObject({ path: realpathSync(dirname(join(f.root, 'app.asar.unpacked', 'dsh', f.manifest))) })
   expect((f.require('node:fs') as typeof import('node:fs')).realpathSync).toBe(realpathSync)
-  expect(f.require('@deepseek-ai/libreoffice-kit/package.json')).toEqual({ name: '@deepseek-ai/libreoffice-kit' })
+  // The kit itself and its WASM engine answer existence probes from the physical tree, where a
+  // path that was never unpacked is absent instead of reported present inside the archive.
+  expect(f.require('@deepseek-ai/libreoffice-kit/package.json')).toMatchObject({ root: 'unpacked' })
+  expect(f.require('@deepseek-ai/libreoffice-kit-wasm/package.json')).toMatchObject({ root: 'unpacked' })
 })
 
 it('rejects an engine missing from the unpacked tree instead of using its archived copy', () => {
@@ -77,17 +87,12 @@ it('rejects an engine resolved elsewhere inside the archive', () => {
     .toThrow('outside the runtime package directory')
 })
 
-it('leaves external engines and the archived WASM engine at their own locations', () => {
+it('leaves an engine resolved outside the runtime at its own location', () => {
   const f = fixture()
   const external = join(f.root, 'external', f.manifest)
-  const wasm = join(f.runtime, 'node_modules/@deepseek-ai/libreoffice-kit-wasm/package.json')
-  for (const path of [external, wasm]) {
-    mkdirSync(dirname(path), { recursive: true })
-    writeFileSync(path, JSON.stringify({ path: realpathSync(dirname(path)) }))
-  }
+  mkdirSync(dirname(external), { recursive: true })
+  writeFileSync(external, JSON.stringify({ path: realpathSync(dirname(external)) }))
   const require: (specifier: string) => unknown = createRequire(join(f.root, 'external', 'package.json'))
   expect(require('@deepseek-ai/libreoffice-kit-darwin-arm64/package.json'))
     .toMatchObject({ path: realpathSync(dirname(external)) })
-  expect(f.require('@deepseek-ai/libreoffice-kit-wasm/package.json'))
-    .toMatchObject({ path: realpathSync(dirname(wasm)) })
 })
