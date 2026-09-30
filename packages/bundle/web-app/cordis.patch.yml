@@ -29,6 +29,15 @@
     path: ':memory:'
     openAt: never
 
+# Sharp's prebuilt libvips links GLib statically, while Electron on Linux links the system
+# GLib and leaks its symbols into the process space, so decoding any image inside an
+# Electron host crashes it (electron/electron#46323). A host that supplies a bundled plain
+# Node — the Desktop application does — runs raster work in a worker process instead; every
+# other runtime keeps in-process raster work and leaves this row unused.
+- id: attachment-local
+  config:
+    rasterNode: !!js "process.env.DSH_PRIMARY_RUNTIME ? process.getBuiltinModule('node:path').join(process.env.DSH_PRIMARY_RUNTIME, 'dependencies', 'node', 'bin', process.platform === 'win32' ? 'node.exe' : 'node') : undefined"
+
 - id: tools
   config:
     # TEMPORARY workaround: DSH_TOOLS_MODE (native|ptc|both) opts a whole dsh

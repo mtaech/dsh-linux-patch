@@ -128,8 +128,43 @@ function checkKoffi() {
   }
 }
 
-/** Encode and decode a pixel through the packaged libvips binary. */
-async function checkSharp() {
+/** One-pixel PNG that every raster check decodes. */
+const PIXEL_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWNgZGIGAAAOAAeCcsnOAAAAAElFTkSuQmCC',
+  'base64',
+)
+
+/**
+ * Decode and normalize a PNG through the packaged attachment store on Linux.
+ *
+ * Electron links the system GLib over the GLib that Sharp's prebuilt libvips
+ * links statically, so decoding an image inside an Electron Linux process
+ * crashes it (electron/electron#46323). The store runs that work in the
+ * bundled plain Node instead, which is what this check exercises.
+ */
+async function checkPackagedRasterStore() {
+  const { default: LocalAttachmentStore } = await import(
+    pathToFileURL(requireRuntime.resolve('@deepseek-ai/dsh-attachment-local')).href)
+  const { Context } = requireRuntime('@deepseek-ai/cordis')
+  const service = new LocalAttachmentStore(new Context(), {
+    dshHome: scratch,
+    rasterNode: join(resourcesRuntime, 'primary-runtime', 'dependencies', 'node', 'bin', 'node'),
+  })
+  const ref = await service.saveImage({ data: PIXEL_PNG, mediaType: 'image/png' })
+  assert.equal(ref.mediaType, 'image/png')
+  assert.equal(ref.width, 1)
+  assert.equal(ref.height, 1)
+  const stored = await service.readImage(ref)
+  assert.deepEqual(Buffer.from(stored.data), PIXEL_PNG)
+}
+
+/** Exercise packaged image decoding: in-process wherever Electron loads no conflicting
+ * GLib, and through the bundled plain Node on Linux. */
+async function checkRaster() {
+  if (process.versions.electron && process.platform === 'linux') {
+    await checkPackagedRasterStore()
+    return
+  }
   const sharp = requireRuntime('sharp')
   const pixel = Buffer.from([17, 103, 231])
   const png = await sharp(pixel, { raw: { width: 1, height: 1, channels: 3 } }).png().toBuffer()
@@ -159,7 +194,7 @@ try {
   assert.equal(typeof builtin.requireBuiltin('internal/modules/esm/loader').getOrInitializeCascadedLoader, 'function')
   checkPnpm()
   checkKoffi()
-  await checkSharp()
+  await checkRaster()
   checkHtml()
   await checkPty()
   await checkSearch()
@@ -171,5 +206,5 @@ try {
 // Natural event-loop drain includes node-pty's worker and console-list helper teardown.
 process.once('beforeExit', () => {
   console.log(JSON.stringify({ node: process.versions.node, platform: process.platform, arch: process.arch,
-    koffi: true, sharp: true, html: true, pty: true, pnpm: true, grep: true, glob: true }))
+    koffi: true, raster: true, html: true, pty: true, pnpm: true, grep: true, glob: true }))
 })

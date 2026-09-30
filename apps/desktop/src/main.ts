@@ -442,7 +442,11 @@ async function main(): Promise<void> {
   const backend = new DesktopBackendController((onFailure) => {
     const hostInspectPort = developmentHostInspectPort(development)
     const host = new DesktopHostProcess(resources.node, resources.dsh, activeProject,
-      hostInspectPort, { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion() }, onFailure,
+      hostInspectPort,
+      // The profile reads this to run raster work in the bundled plain Node: Electron on
+      // Linux cannot decode images in-process.
+      { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion(), DSH_PRIMARY_RUNTIME: primaryRuntime },
+      onFailure,
       primaryRuntime,
       resources, (next) => { platformView.setSession(next) })
     return {

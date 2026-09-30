@@ -69,7 +69,13 @@ export function createElectronBuilderConfig(
   let primaryRuntimeDestination
   let dshDestination
   let windowsCode = []
+  // A plain Node child cannot read ASAR entries, so every file it opens — Sharp and its
+  // loadable dependencies, the raster worker entry, and the Office engine — stays physical.
   const unpack = ['**/*.{node,dylib,dll,so,exe}', '**/*.so.*', '**/spawn-helper', '**/@vscode/ripgrep-*/bin/rg',
+    '**/node_modules/sharp/**/*',
+    '**/node_modules/detect-libc/**/*',
+    '**/node_modules/@img/**/*',
+    '**/node_modules/@deepseek-ai/dsh-attachment-local/**/*',
     `**/node_modules/@deepseek-ai/libreoffice-kit-${resolvedPlatform}-${resolvedArch}/**/*`]
   const windowsSigner = packagesWindows && !unsigned
     ? createWindowsTokenSigner({
