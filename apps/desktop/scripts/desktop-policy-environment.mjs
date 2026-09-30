@@ -12,10 +12,15 @@ function origin(value, name) {
 
 /**
  * Resolve mandatory policy metadata before preparing artifacts or accessing signing hardware.
+ *
+ * The Desktop runtime enforces mandatory updates on macOS and Windows only, so a package for
+ * another platform carries no policy metadata and none of its settings are required.
  * @param {NodeJS.ProcessEnv} environment File-owned release settings; the unselected origin is not required.
- * @returns {{ origin: string, allowedPageOrigins: string[], authentication: 'anonymous' | 'feishu-test', [key: string]: unknown }} Selected policy.
+ * @param {NodeJS.Platform} platform Distribution platform this package targets.
+ * @returns {undefined | { origin: string, allowedPageOrigins: string[], authentication: 'anonymous' | 'feishu-test', [key: string]: unknown }} Selected policy, or undefined when the platform has none.
  */
-export function resolveDesktopPolicyEnvironment(environment) {
+export function resolveDesktopPolicyEnvironment(environment, platform) {
+  if (platform !== 'win32' && platform !== 'darwin') return undefined
   const deployment = resolveDesktopAutoUpdateEnvironment(environment)
   const name = deployment === 'test' ? 'DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN' : 'DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN'
   const selected = origin(environment[name], name)

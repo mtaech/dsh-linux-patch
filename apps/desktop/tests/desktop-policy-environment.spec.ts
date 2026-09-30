@@ -1,7 +1,14 @@
 import { expect, it } from 'vitest'
-import { resolveDesktopPolicyEnvironment } from '../scripts/desktop-policy-environment.mjs'
+import { resolveDesktopPolicyEnvironment as resolvePolicy } from '../scripts/desktop-policy-environment.mjs'
 import { validateDesktopPackageEnvironment } from '../scripts/desktop-package-environment.mjs'
 import { resolveDesktopPolicyConfig } from '../src/mandatory-update-policy.ts'
+
+/** Resolve one policy as the macOS and Windows targets do; Linux carries none. */
+const resolveDesktopPolicyEnvironment = (environment: NodeJS.ProcessEnv) => {
+  const policy = resolvePolicy(environment, 'win32')
+  if (policy === undefined) throw new Error('expected a Windows policy')
+  return policy
+}
 
 const origins = { DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN: 'https://test.example.com',
   DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://prod.example.com' }
@@ -52,4 +59,11 @@ it.each([{ unsigned: true }, { prepareOnly: true }, {}])('fails before signing/p
     expect(() => { validateDesktopPackageEnvironment({ DSH_DESKTOP_APP_ID: 'com.example.test' }, { platform, arch: 'x64' }, options) })
       .toThrow('DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN')
   }
+})
+
+it.each(['linux', 'freebsd'] as const)('carries no policy metadata for %s packages', (platform) => {
+  // The runtime enforces mandatory updates on macOS and Windows only, so these settings are
+  // neither required nor packaged elsewhere.
+  expect(resolvePolicy({}, platform)).toBeUndefined()
+  expect(resolvePolicy({ ...origins, ...auth, DSH_DESKTOP_AUTO_UPDATE_ENV: 'test' }, platform)).toBeUndefined()
 })

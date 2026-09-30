@@ -18,6 +18,9 @@ const WINDOWS_SETTING = /^DSH_DESKTOP_WINDOWS_(?:CER_FILE|SIGNTOOL|KEY_CONTAINER
 const MACOS_SETTING = /^(?:DSH_DESKTOP_MACOS_(?:SIGNING_IDENTITY|TEAM_ID|PACK_CONCURRENCY|DOWNLOAD_PROXY|NOTARIZATION_PROXY)|APPLE_(?:API_KEY|API_KEY_ID|API_ISSUER|ID|APP_SPECIFIC_PASSWORD|TEAM_ID|KEYCHAIN|KEYCHAIN_PROFILE)|CSC_(?:LINK|KEY_PASSWORD))$/u
 // Linux packaging needs no platform-specific release setting: it neither signs nor notarizes.
 const LINUX_SETTING = /^$/u
+// Mandatory updates are a macOS and Windows capability, so a Linux package must not carry their
+// settings: they would be recorded nowhere and only suggest an enforcement that cannot happen.
+const PLATFORM_FORBIDDEN = { win32: /^$/u, darwin: /^$/u, linux: /^DSH_DESKTOP_MANDATORY_UPDATE_/u }
 const PLATFORM_SETTINGS = { win32: WINDOWS_SETTING, darwin: MACOS_SETTING, linux: LINUX_SETTING }
 const PLATFORM_ENV_FILES = { win32: '.env.windows', darwin: '.env.macos', linux: '.env.linux' }
 const AMBIENT_RELEASE_SETTING = /^(?:DSH_DESKTOP_(?:APP_ID|AUTO_UPDATE_ENV|MANDATORY_UPDATE_.*|WINDOWS_.*|MACOS_.*)|APPLE_.*|(?:WIN_)?CSC_.*|DOWNLOAD_(?:TEST|PROD)_.*)$/iu
@@ -49,6 +52,9 @@ export function loadDesktopPackageEnvironment(platform, environment = process.en
   }
   const platformSetting = PLATFORM_SETTINGS[platform]
   for (const name of Object.keys(settings)) {
+    if (PLATFORM_FORBIDDEN[platform].test(name)) {
+      throw new Error(`desktop package: unsupported setting ${name} in ${path}; mandatory updates apply to macOS and Windows packages`)
+    }
     if (!SHARED_SETTING.test(name) && !platformSetting.test(name)) {
       throw new Error(`desktop package: unsupported setting ${name} in ${path}; use the platform template`)
     }
@@ -83,7 +89,7 @@ function requireReadableFile(environment, name) {
 export function validateDesktopPackageEnvironment(environment, target, options = {}) {
   resolveDesktopAppId(environment)
   resolveNpmRegistry(environment)
-  resolveDesktopPolicyEnvironment(environment)
+  resolveDesktopPolicyEnvironment(environment, target.platform)
   if (target.platform === 'darwin') resolveMacOSPackageSettings(environment)
   else if (target.platform === 'win32') resolveWindowsPackageSettings(environment)
   if (options.unsigned) return

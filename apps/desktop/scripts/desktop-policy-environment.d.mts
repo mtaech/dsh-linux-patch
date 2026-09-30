@@ -9,7 +9,14 @@ export interface DesktopPolicyEnvironment {
 
 /**
  * Resolve policy settings before artifact preparation or signing.
+ *
+ * The Desktop runtime enforces mandatory updates on macOS and Windows only, so another target
+ * carries no policy metadata and none of its settings are required.
  * @param environment File-owned release settings; only the selected origin is required.
- * @returns Policy metadata with deployment-selected origin and authentication.
+ * @param platform Distribution platform this package targets.
+ * @returns Policy metadata with deployment-selected origin and authentication, or undefined when the platform has none.
  */
-export function resolveDesktopPolicyEnvironment(environment: NodeJS.ProcessEnv): DesktopPolicyEnvironment
+export function resolveDesktopPolicyEnvironment(
+  environment: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+): DesktopPolicyEnvironment | undefined

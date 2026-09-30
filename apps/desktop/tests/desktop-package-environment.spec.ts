@@ -14,6 +14,9 @@ const POLICY = { DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN: 'https://policy.examp
   DSH_DESKTOP_MANDATORY_UPDATE_CONFIG: JSON.stringify({ allowedAuthOrigins: ['https://login.example.com'] }) }
 const RELEASE = { ...POLICY, DSH_DESKTOP_APP_ID: 'com.example.desktop', DOWNLOAD_TEST_ORIGIN: 'https://updates.example.com',
   DOWNLOAD_TEST_RELEASE_ID: '0123456789abcdef0123456789abcdef' }
+// Linux packages carry no mandatory-update policy, so their file must not offer its settings.
+const LINUX_RELEASE = { DSH_DESKTOP_APP_ID: RELEASE.DSH_DESKTOP_APP_ID, DOWNLOAD_TEST_ORIGIN: RELEASE.DOWNLOAD_TEST_ORIGIN,
+  DOWNLOAD_TEST_RELEASE_ID: RELEASE.DOWNLOAD_TEST_RELEASE_ID }
 const MAC_IDENTITY = { DSH_DESKTOP_MACOS_SIGNING_IDENTITY: 'Example Company (TEAMID1234)', DSH_DESKTOP_MACOS_TEAM_ID: 'TEAMID1234' }
 
 async function withDirectory(action: (directory: string) => Promise<void>): Promise<void> {
@@ -81,11 +84,12 @@ describe('Desktop local packaging configuration', () => {
 
   it.each(['win32', 'darwin', 'linux'] as const)('owns the %s release ID in its platform file', async (platform) => {
     await withDirectory(async (directory) => {
-      const settings = Object.entries(RELEASE).map(([name, value]) => `${name}='${value}'`).join('\n') + '\n'
+      const owned = platform === 'linux' ? LINUX_RELEASE : RELEASE
+      const settings = Object.entries(owned).map(([name, value]) => `${name}='${value}'`).join('\n') + '\n'
       const file = join(directory, ENV_FILES[platform])
       const parent = { DOWNLOAD_TEST_RELEASE_ID: 'a'.repeat(32) }
       await writeFile(file, settings)
-      expect(loadDesktopPackageEnvironment(platform, parent, directory).DOWNLOAD_TEST_RELEASE_ID).toBe(RELEASE.DOWNLOAD_TEST_RELEASE_ID)
+      expect(loadDesktopPackageEnvironment(platform, parent, directory).DOWNLOAD_TEST_RELEASE_ID).toBe(owned.DOWNLOAD_TEST_RELEASE_ID)
       await writeFile(file, settings.replace(`DOWNLOAD_TEST_RELEASE_ID='${RELEASE.DOWNLOAD_TEST_RELEASE_ID}'\n`, ''))
       const missing = loadDesktopPackageEnvironment(platform, parent, directory)
       expect(missing.DOWNLOAD_TEST_RELEASE_ID).toBeUndefined()
@@ -98,7 +102,7 @@ describe('Desktop local packaging configuration', () => {
 
   it('loads the Linux file and validates Linux without signing or notarization settings', async () => {
     await withDirectory(async (directory) => {
-      expect(() => loadDesktopPackageEnvironment('linux', RELEASE, directory)).toThrow(/copy .*\.env\.linux\.example/u)
+      expect(() => loadDesktopPackageEnvironment('linux', LINUX_RELEASE, directory)).toThrow(/copy .*\.env\.linux\.example/u)
     })
     await withDirectory(async (directory) => {
       await writeFile(join(directory, '.env.linux'), 'DSH_DESKTOP_APP_ID=com.example.linux\n')
@@ -106,17 +110,22 @@ describe('Desktop local packaging configuration', () => {
         .toEqual({ DSH_DESKTOP_APP_ID: 'com.example.linux' })
       await writeFile(join(directory, '.env.linux'), 'DSH_DESKTOP_WINDOWS_TOKEN_PIN=secret-sentinel\n')
       expect(() => loadDesktopPackageEnvironment('linux', {}, directory)).toThrow(/unsupported setting DSH_DESKTOP_WINDOWS_TOKEN_PIN/u)
+      await writeFile(join(directory, '.env.linux'), 'DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=https://policy.example.com\n')
+      expect(() => loadDesktopPackageEnvironment('linux', {}, directory))
+        .toThrow(/mandatory updates apply to macOS and Windows packages/u)
       await writeFile(join(directory, '.env.linux'), 'DSH_DESKTOP_MACOS_PACK_CONCURRENCY=2\n')
       expect(() => loadDesktopPackageEnvironment('linux', {}, directory)).toThrow(/unsupported setting DSH_DESKTOP_MACOS_PACK_CONCURRENCY/u)
     })
     expect(() => {
-      validateDesktopPackageEnvironment(RELEASE, LINUX)
+      validateDesktopPackageEnvironment(LINUX_RELEASE, LINUX)
+    }).not.toThrow()
+    // A Linux package carries no mandatory-update policy, so those settings are optional there.
+    expect(() => {
+      validateDesktopPackageEnvironment({ DSH_DESKTOP_APP_ID: RELEASE.DSH_DESKTOP_APP_ID }, LINUX, { prepareOnly: true })
     }).not.toThrow()
     expect(() => {
-      validateDesktopPackageEnvironment({ ...POLICY, DSH_DESKTOP_APP_ID: RELEASE.DSH_DESKTOP_APP_ID }, LINUX, { prepareOnly: true })
-    }).not.toThrow()
-    expect(() => {
-      validateDesktopPackageEnvironment({ ...POLICY, DSH_DESKTOP_APP_ID: RELEASE.DSH_DESKTOP_APP_ID }, LINUX)
+      // Publication settings stay required: only the policy is absent from a Linux package.
+      validateDesktopPackageEnvironment({ DSH_DESKTOP_APP_ID: RELEASE.DSH_DESKTOP_APP_ID }, LINUX)
     }).toThrow(/DOWNLOAD_TEST_ORIGIN/u)
   })
 
