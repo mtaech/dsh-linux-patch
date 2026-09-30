@@ -1,54 +1,21 @@
-/** Deterministic provider-independent image normalization. */
+/** Deterministic provider-independent image normalization. @module @deepseek-ai/dsh-attachment-local/normalization */
 
-import type { Sharp } from 'sharp'
-import { AttachmentError, requestImageDimensions } from '@deepseek-ai/dsh-attachment'
-import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
-import { encodeFirstWithinLimit, encodingLadder, isExhaustedEncoding } from './encoding.ts'
+import { AttachmentError } from '@deepseek-ai/dsh-attachment'
 import { detectImage, encodedAlphaIsCompatible } from './image.ts'
-import type { DetectedImage } from './image.ts'
-import { requireSharp } from './sharp.ts'
+import { normalizeImage as dispatchNormalizeImage } from './raster.ts'
+import { canPassThroughNormalization } from './raster-operations.ts'
+import type { DetectedImage, NormalizationPolicy, NormalizedImage } from './raster-operations.ts'
 
-/** Deployment-resolved policy for the persisted normalized attachment. */
-export interface NormalizationPolicy {
-  /** Total-pixel budget; larger sources are downscaled proportionally. */
-  maxPixels: number
-  /** Long-edge cap in pixels applied after the total-pixel budget, bounding extreme aspect ratios. */
-  maxDimension: number
-  /** Encoded-byte target for the quality ladder; the smallest ladder output is kept when no quality fits. */
-  maxBytes: number
-}
-
-/** Normalized bytes beside the facts recorded by a durable reference. */
-export interface NormalizedImage {
-  data: Uint8Array
-  mediaType: ImageMediaType
-  width: number
-  height: number
-}
+export { canPassThroughNormalization } from './raster-operations.ts'
+export type { NormalizationPolicy, NormalizedImage } from './raster-operations.ts'
 
 /**
- * Whether bytes already satisfy the normalization requirements.
- * @param detected - fully decoded source facts.
- * @param bytes - encoded source length.
- * @param policy - resolved normalization limits.
- * @returns whether the source can pass through byte-identically.
+ * Assert that a normalized output is an 8-bit sRGB/sRGBA single-frame image with matching facts.
+ *
+ * Verification runs beside the store rather than beside the encoder: bytes
+ * produced by a raster worker cross a process boundary, so their reported
+ * facts are re-derived here before they are persisted.
  */
-export function canPassThroughNormalization(
-  detected: DetectedImage,
-  bytes: number,
-  policy: NormalizationPolicy,
-): boolean {
-  return detected.mediaType !== 'image/gif'
-    && !detected.animated
-    && !detected.carriesMetadata
-    && detected.depth === 'uchar'
-    && detected.space === 'srgb'
-    && bytes <= policy.maxBytes
-    && detected.width * detected.height <= policy.maxPixels
-    && Math.max(detected.width, detected.height) <= policy.maxDimension
-}
-
-/** Assert that a normalized output is an 8-bit sRGB/sRGBA single-frame image with matching facts. */
 async function verifyNormalizedImage(
   image: NormalizedImage,
   expectedAlpha: boolean | undefined,
@@ -70,31 +37,6 @@ async function verifyNormalizedImage(
   return image
 }
 
-/** Build one fixed-size, oriented, metadata-free sRGB pipeline from submitted bytes. */
-function preparedPipeline(
-  sharp: ReturnType<typeof requireSharp>,
-  data: Uint8Array,
-  width: number,
-  height: number,
-): Sharp {
-  return sharp(data, { failOn: 'error', limitInputPixels: false })
-    .rotate()
-    .toColourspace('srgb')
-    .resize({ width, height, fit: 'inside', withoutEnlargement: true })
-}
-
-/** Dimensions under the total-pixel budget, then the long-edge cap, without changing aspect ratio. */
-function initialDimensions(detected: DetectedImage, policy: NormalizationPolicy): { width: number; height: number } {
-  const budgeted = requestImageDimensions(detected.width, detected.height, policy.maxPixels)
-  const longEdge = Math.max(budgeted.width, budgeted.height)
-  if (longEdge <= policy.maxDimension) return budgeted
-  const scale = policy.maxDimension / longEdge
-  return {
-    width: Math.max(1, Math.floor(budgeted.width * scale)),
-    height: Math.max(1, Math.floor(budgeted.height * scale)),
-  }
-}
-
 /**
  * Produce the persisted provider-independent normalized version of one fully decoded source.
  * The source is passed through only when it is already clean, single-frame, 8-bit sRGB/sRGBA,
@@ -114,24 +56,6 @@ export async function normalizeImage(
   if (canPassThroughNormalization(detected, data.byteLength, policy)) {
     return { data, mediaType: detected.mediaType, width: detected.width, height: detected.height }
   }
-  const sharp = requireSharp()
-  try {
-    const { width, height } = initialDimensions(detected, policy)
-    const encoded = await encodeFirstWithinLimit(
-      encodingLadder(preparedPipeline(sharp, data, width, height), detected.hasAlpha),
-      policy.maxBytes,
-    )
-    const chosen = isExhaustedEncoding(encoded) ? encoded.smallest : encoded
-    return await verifyNormalizedImage(chosen, detected.mediaType === 'image/gif' ? undefined : detected.hasAlpha)
-  } catch (error) {
-    if (error instanceof AttachmentError) throw error
-    const source = detected.mediaType === 'image/png' && detected.depth !== 'uchar'
-      ? `${detected.depth === 'ushort' ? '16-bit' : detected.depth} PNG`
-      : `${detected.depth} ${detected.mediaType.slice('image/'.length).toUpperCase()}`
-    throw new AttachmentError(
-      `The ${source} could not be converted to the normalized 8-bit sRGB form.`,
-      'ATTACHMENT_WRITE_FAILED',
-      { cause: error },
-    )
-  }
+  const normalized = await dispatchNormalizeImage(data, detected, policy)
+  return await verifyNormalizedImage(normalized, detected.mediaType === 'image/gif' ? undefined : detected.hasAlpha)
 }

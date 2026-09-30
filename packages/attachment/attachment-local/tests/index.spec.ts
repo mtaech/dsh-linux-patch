@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import sharp from 'sharp'
 import LocalAttachmentStore, {
@@ -183,6 +184,55 @@ describe('local attachment service', () => {
         .rejects.toMatchObject({ code: 'IMAGE_TOO_LARGE' })
       await expect(service.validateImage({ data: valid, mediaType: 'image/png' })).resolves.toBeUndefined()
       expect(existsSync(service.root)).toBe(false)
+    } finally {
+      await rm(dshHome, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('raster worker wiring', () => {
+  const okFixture = fileURLToPath(new URL('./fixtures/raster-worker-ok.mjs', import.meta.url))
+
+  /** Run one body while this process reports itself as Electron on Linux. */
+  async function asElectronLinux<T>(body: () => T | Promise<T>): Promise<T> {
+    Object.defineProperty(process.versions, 'electron', { value: '44.0.0', configurable: true })
+    try {
+      return await body()
+    } finally {
+      Reflect.deleteProperty(process.versions, 'electron')
+    }
+  }
+
+  it('refuses raster work under Electron on Linux without a plain Node executable', async () => {
+    const dshHome = await mkdtemp(join(tmpdir(), 'dsh-attachment-raster-refused-'))
+    try {
+      await asElectronLinux(async () => {
+        const service = new LocalAttachmentStore(new Context(), { dshHome })
+        // Non-image attachments keep working; only raster work needs the plain Node executable.
+        await expect(service.saveImage({ data: Uint8Array.from([1, 2, 3]), mediaType: 'image/png' }))
+          .rejects.toThrow(/rasterNode configuration to name a plain Node executable/u)
+      })
+    } finally {
+      await rm(dshHome, { recursive: true, force: true })
+    }
+  })
+
+  it('runs raster work in the configured worker and disposes it with the store', async () => {
+    const dshHome = await mkdtemp(join(tmpdir(), 'dsh-attachment-raster-worker-'))
+    try {
+      await asElectronLinux(async () => {
+        const ctx = new Context()
+        const service = new LocalAttachmentStore(ctx, {
+          dshHome,
+          rasterNode: process.execPath,
+          rasterWorker: okFixture,
+        })
+        // The fixture answers every operation with fixed 2x3 facts, so these dimensions prove
+        // that admission, normalization, and verification all crossed the worker boundary.
+        const ref = await service.saveImage({ data: Uint8Array.from([1, 2, 3]), mediaType: 'image/png' })
+        expect({ width: ref.width, height: ref.height }).toEqual({ width: 2, height: 3 })
+        await ctx.fiber.dispose()
+      })
     } finally {
       await rm(dshHome, { recursive: true, force: true })
     }

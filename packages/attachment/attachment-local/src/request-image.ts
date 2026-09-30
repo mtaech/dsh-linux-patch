@@ -3,34 +3,20 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import type { Sharp } from 'sharp'
 import { AttachmentError, ImageVariantId } from '@deepseek-ai/dsh-attachment'
 import type {
-  ImageMediaType,
   ImageAttachmentRef,
   ImageRequestTarget,
   RequestImageAttachment,
   StoredImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
-import {
-  IMAGE_ENCODING_QUALITIES,
-  WEBP_ENCODING_EFFORT,
-  encodeFirstWithinLimit,
-  encodingLadder,
-  isExhaustedEncoding,
-} from './encoding.ts'
+import { IMAGE_ENCODING_QUALITIES, WEBP_ENCODING_EFFORT } from './encoding.ts'
 import { detectImage, encodedAlphaIsCompatible, probeImage } from './image.ts'
-import { requireSharp } from './sharp.ts'
+import { createRequestImage } from './raster.ts'
+import type { EncodedRequestImage } from './raster-operations.ts'
 
 /** Transform version included in every cache and upload-index identity. */
 export const REQUEST_IMAGE_TRANSFORM_VERSION = 'request-image-v6'
-
-interface EncodedRequestImage {
-  data: Uint8Array
-  mediaType: ImageMediaType
-  width: number
-  height: number
-}
 
 interface VerifiedRequestImage extends EncodedRequestImage {
   hasAlpha: boolean
@@ -81,40 +67,6 @@ export function requestImageVariantId(
   target: ImageRequestTarget,
 ): ReturnType<typeof ImageVariantId> {
   return ImageVariantId(`sha256:${digest(descriptor(attachment, target))}`)
-}
-
-/** Resize by the source long edge only, so the encoder derives the short edge as the route predicts. */
-function pipeline(attachment: StoredImageAttachment, target: ImageRequestTarget): Sharp {
-  const byWidth = attachment.ref.width >= attachment.ref.height
-  return sourcePipeline(attachment)
-    .resize({ ...byWidth ? { width: target.width } : { height: target.height }, withoutEnlargement: true })
-}
-
-function sourcePipeline(attachment: StoredImageAttachment): Sharp {
-  const sharp = requireSharp()
-  return sharp(attachment.data, { failOn: 'error', limitInputPixels: false }).toColourspace('srgb')
-}
-
-async function createRequestImage(
-  attachment: StoredImageAttachment,
-  target: ImageRequestTarget,
-  hasAlpha: boolean,
-): Promise<EncodedRequestImage> {
-  if (target.width >= attachment.ref.width
-    && target.height >= attachment.ref.height
-    && attachment.data.byteLength <= target.maxBytes) {
-    return {
-      data: attachment.data,
-      mediaType: attachment.ref.mediaType,
-      width: attachment.ref.width,
-      height: attachment.ref.height,
-    }
-  }
-  const encodedVersion = await encodeFirstWithinLimit(
-    encodingLadder(pipeline(attachment, target), hasAlpha),
-    target.maxBytes,
-  )
-  return isExhaustedEncoding(encodedVersion) ? encodedVersion.smallest : encodedVersion
 }
 
 function cachePath(root: string, hash: string): string {

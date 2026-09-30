@@ -47,6 +47,8 @@ kind: "package-reference"
 | `normalizedImageMaxDimension` | `8192` | 应用总像素预算后的最大长边 |
 | `normalizedImageMaxBytes` | `4 MiB` | 编码字节目标；没有候选满足时保留质量阶梯中的最小输出 |
 | `imageCompressionConcurrency` | `2` | 并发规范化与请求变换的 FIFO 上限 |
+| `rasterNode` | — | Electron on Linux 承载本存储时用于执行图像工作的普通 Node 可执行文件；该环境下必填，其他环境忽略 |
+| `rasterWorker` | 随包入口 | 部署迁移后的 worker 入口；省略时解析本包旁的构建产物入口 |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-attachment-local)完整列出了所有受支持的字段及其 JSDoc。
 
@@ -79,6 +81,10 @@ kind: "package-reference"
 - **惰性 alpha 路由编码。** 带 alpha 的图片使用 WebP，不透明图片使用 JPEG；质量候选按 85/75/60 顺序运行，没有候选满足编码字节目标时保留最小输出。
 - **限制是写入时策略。** 字节、总像素与单边尺寸限制只约束准入，因此之后收紧它们绝不会让已接纳的历史不可读。
 
+### 栅格 worker 边界
+
+Sharp 的 Linux 预编译 libvips 静态链接 GLib，而 Electron 链接系统 GLib 并把其符号泄漏进进程空间，因此在 Electron Linux 进程内加载任何图片都会使其崩溃（[electron#46323](https://github.com/electron/electron/issues/46323)）。检测到该组合时，栅格工作转移到由 `rasterNode` 启动的 worker 进程；未配置该可执行文件时，宿主继续服务非图片附件，并以可操作的错误拒绝图像工作。worker 返回的字节在落盘前会在存储侧重新解码校验，因此从不信任 worker 自报的事实。其他运行时仍在自身进程内加载 Sharp，并忽略这两个字段。
+
 ### 写入与读取路径
 
 对象存放在 `<DSH_HOME>/attachments/v1/objects/<sha256-prefix>/<sha256>`；相同字节会去重为同一个对象和同一个 `sha256:` 标识符。首次写入前，进程会把 home 的每个祖先目录逐级同步到文件系统根目录，因此绝不会把另一个进程已创建但尚未同步的目录误认为安全边界。随后，写入过程把字节暂存到 `v1/tmp`、同步临时文件、以原子且排他的硬链接发布，并同步发布目录——在 Windows 上，文件系统元数据日志负责目录项持久性。保存操作完成后，返回的引用已具备持久性。
@@ -98,7 +104,12 @@ kind: "package-reference"
 | [`src/file-store.ts`](src/file-store.ts) | 原样文件的流式写入、校验式流式读取与安全存储文件名 |
 | [`src/normalization.ts`](src/normalization.ts) + [`src/encoding.ts`](src/encoding.ts) | 提供方无关的规范化与有界格式／质量候选 |
 | [`src/request-image.ts`](src/request-image.ts) | 路由专用请求变换、缓存身份与 singleflight |
-| [`src/image.ts`](src/image.ts) | 完整光栅解码与元数据校验 |
+| [`src/image.ts`](src/image.ts) | 完整光栅解码与元数据校验，按宿主分派 |
+| [`src/raster.ts`](src/raster.ts) | 运行器选择：进程内 Sharp 或普通 Node worker，以及打包入口解析 |
+| [`src/raster-client.ts`](src/raster-client.ts) | worker 通道宿主侧：启动、请求分派、背压与回收 |
+| [`src/raster-worker.ts`](src/raster-worker.ts) | 通道关闭前持续服务请求的 worker 入口 |
+| [`src/raster-protocol.ts`](src/raster-protocol.ts) | 带长度前缀、分段有上限的帧编解码 |
+| [`src/raster-operations.ts`](src/raster-operations.ts) | 唯一加载 Sharp 的模块：解码、规范化与请求变换 |
 | — | 不发布运行时不变式伴生入口；不可变写入与校验读取在后端边界直接强制。 |
 
 </details>

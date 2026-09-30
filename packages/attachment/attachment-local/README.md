@@ -47,6 +47,8 @@ Mount the plugin with no required configuration. The defaults below define what 
 | `normalizedImageMaxDimension` | `8192` | Maximum long edge after applying the total-pixel budget |
 | `normalizedImageMaxBytes` | `4 MiB` | Encoded-byte target; the smallest quality-ladder output is kept when none fits |
 | `imageCompressionConcurrency` | `2` | FIFO limit for concurrent normalization and request transforms |
+| `rasterNode` | — | Plain Node executable that runs image work when Electron on Linux hosts this store; required there, ignored everywhere else |
+| `rasterWorker` | built entry | Worker entry a deployment relocates; omitted resolves the built entry beside this package |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-attachment-local) is the exhaustive source for every accepted field and its JSDoc.
 
@@ -79,6 +81,10 @@ This section explains the durability and verification design behind the storage,
 - **Lazy alpha-routed encoding.** Alpha images use WebP and opaque images use JPEG; quality candidates run in 85/75/60 order, and the smallest output is retained when none meets the encoded-byte target.
 - **Limits are write-time policy.** Byte, total-pixel, and per-side dimension limits bind admission only, so tightening them later never makes admitted history unreadable.
 
+### Raster worker boundary
+
+Sharp's prebuilt Linux libvips links GLib statically while Electron links the system GLib and leaks its symbols into the process space, so loading any image inside an Electron Linux process crashes it ([electron#46323](https://github.com/electron/electron/issues/46323)). Where that combination is detected, raster work moves to a worker process started from `rasterNode`; the host keeps non-image attachments working and refuses image work with an actionable error when no such executable is configured. Bytes the worker returns are decoded and checked again beside the store before they are persisted, so the worker's own reported facts are never trusted. Every other runtime loads Sharp in its own process and ignores both fields.
+
 ### Write and read paths
 
 Objects land at `<DSH_HOME>/attachments/v1/objects/<sha256-prefix>/<sha256>`; equal bytes deduplicate to one object and one `sha256:` id. Before the first write, the process syncs every ancestor directory of the home down to the filesystem root once, so a directory another process created but has not yet synced is never mistaken for a safe boundary. Writes then stage bytes in `v1/tmp`, sync the temporary file, publish with an atomic exclusive hard link, and sync the publication directories — on Windows, filesystem metadata journaling owns entry durability. Once the save resolves, the reported reference is durable.
@@ -98,7 +104,12 @@ Generic-file bytes have one canonical object at `<DSH_HOME>/attachments/v1/file-
 | [`src/file-store.ts`](src/file-store.ts) | Verbatim streamed file writes, verified streamed reads, and safe stored filenames |
 | [`src/normalization.ts`](src/normalization.ts) + [`src/encoding.ts`](src/encoding.ts) | Provider-independent normalization and bounded format/quality candidates |
 | [`src/request-image.ts`](src/request-image.ts) | Route-specific request transforms, cache identity, and singleflight |
-| [`src/image.ts`](src/image.ts) | Full raster decode and metadata verification |
+| [`src/image.ts`](src/image.ts) | Full raster decode and metadata verification, dispatched per host |
+| [`src/raster.ts`](src/raster.ts) | Runner selection: in-process Sharp or the plain-Node worker, plus packaged-entry resolution |
+| [`src/raster-client.ts`](src/raster-client.ts) | Host side of the worker channel: spawn, request dispatch, backpressure, teardown |
+| [`src/raster-worker.ts`](src/raster-worker.ts) | Worker entry that serves requests until its channel closes |
+| [`src/raster-protocol.ts`](src/raster-protocol.ts) | Length-prefixed frame codec with bounded sections |
+| [`src/raster-operations.ts`](src/raster-operations.ts) | The only module that loads Sharp: decode, normalize, and request transforms |
 | — | No runtime invariant companion is published; immutable writes and verified reads are enforced directly at the backend boundary. |
 
 </details>

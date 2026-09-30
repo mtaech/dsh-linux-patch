@@ -23,6 +23,7 @@ import {
   readFileStreamVerbatim, saveFileStreamVerbatim, saveFileVerbatim, storedFilePath,
 } from './file-store.ts'
 import { readRequestImageFile, requestImageVariantId } from './request-image.ts'
+import { disposeRaster, installRasterWorker, rasterWorkerRequired, refuseRasterWork } from './raster.ts'
 
 export { canPassThroughNormalization, normalizeImage } from './normalization.ts'
 export type { NormalizedImage, NormalizationPolicy } from './normalization.ts'
@@ -82,6 +83,19 @@ export interface Config {
   normalizedImageMaxBytes?: number
   /** Maximum simultaneous normalization or request-image transformations in this service instance. */
   imageCompressionConcurrency?: number
+  /**
+   * Absolute plain Node executable that runs raster work outside this process.
+   * Required when the store runs under Electron on Linux, where Sharp's
+   * prebuilt libvips crashes in an Electron process space; every other runtime
+   * keeps in-process raster work and ignores this value.
+   */
+  rasterNode?: string
+  /**
+   * Absolute worker entry when a deployment relocates it; omitted uses the
+   * built entry beside this package, which a packaged host resolves out of
+   * `app.asar` into its unpacked directory.
+   */
+  rasterWorker?: string
 }
 
 function abortReason(signal: AbortSignal): Error {
@@ -157,6 +171,8 @@ export class LocalAttachmentStore extends AttachmentStore {
     normalizedImageMaxBytes: z.number().step(1).min(1).default(DEFAULT_NORMALIZED_IMAGE_MAX_BYTES),
     imageCompressionConcurrency: z.number().step(1).min(1).max(MAX_IMAGE_COMPRESSION_CONCURRENCY)
       .default(DEFAULT_IMAGE_COMPRESSION_CONCURRENCY),
+    rasterNode: z.string(),
+    rasterWorker: z.string(),
   })
 
   /** Absolute versioned storage root. */
@@ -198,6 +214,21 @@ export class LocalAttachmentStore extends AttachmentStore {
     }
     this.imageCompressionConcurrency = compressionConcurrency
     this.compression = new CompressionLimiter(compressionConcurrency)
+    const rasterNode = config.rasterNode === undefined || config.rasterNode.length === 0 ? undefined : config.rasterNode
+    if (rasterWorkerRequired()) {
+      if (rasterNode === undefined) {
+        // Sharp's prebuilt libvips cannot decode inside an Electron Linux process, and this host
+        // names no plain Node executable to run it in, so raster work fails with this reason.
+        refuseRasterWork(
+          'attachment-local: Electron on Linux requires the rasterNode configuration to name a plain Node executable that runs image work',
+        )
+      } else {
+        ctx.effect(() => {
+          installRasterWorker(rasterNode, process.env, config.rasterWorker)
+          return () => { void disposeRaster() }
+        }, 'attachment-local.raster')
+      }
+    }
   }
 
   async validateImage(input: SaveImageAttachment): Promise<void> {
