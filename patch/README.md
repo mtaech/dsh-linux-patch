@@ -4,7 +4,7 @@ Patched Linux x64 build of the DeepSeek Harness desktop application, from the pu
 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) source. This is a
 personal build repository — **not** an official DeepSeek release.
 
-The tree is the upstream source plus six commits that make the Linux target actually run and look
+The tree is the upstream source plus seven commits that make the Linux target actually run and look
 right. The
 [full analysis](SOLUTION.md) of every defect, and the [tracking issue](https://github.com/mtaech/dsh-linux-patch/issues/1)
 carry the root causes and evidence.
@@ -13,7 +13,7 @@ carry the root causes and evidence.
 
 ```sh
 curl -L -o dsh.AppImage \
-  https://github.com/mtaech/dsh-linux-patch/releases/download/v0.2.0-rc.2-linux.2/deepseek-harness-0.2.0-rc.2-linux-x86_64.AppImage
+  https://github.com/mtaech/dsh-linux-patch/releases/latest/download/deepseek-harness-0.2.0-rc.2-linux-x86_64.AppImage
 chmod +x dsh.AppImage
 ./dsh.AppImage
 ```
@@ -26,9 +26,9 @@ update feed, so a `nightly-linux.yml` 404 at startup is expected.
 | Branch | Contents |
 |---|---|
 | `main` | The patched build, plus this documentation. |
-| `fix/linux-raster-child-process` | The six patch commits alone, for review or rebasing onto upstream. |
+| `fix/linux-raster-child-process` | The seven patch commits alone, for review or rebasing onto upstream. |
 
-## The six commits
+## The seven commits
 
 ```
 fix(attachment-local): run raster work in a plain-Node worker on Electron Linux
@@ -36,6 +36,7 @@ fix(desktop):          package the raster worker and hand the Host a plain Node
 fix(desktop-host):     resolve the Office kit closure to its unpacked files
 fix(desktop):          keep the mandatory-update policy out of Linux packages
 fix(desktop):          give Linux windows their application identity and icon
+fix(desktop):          label the Linux application entry dsh-desktop
 docs:                  record the Linux raster worker, kit resolution, and policy scope
 ```
 
@@ -73,7 +74,7 @@ which ignores proxy variables otherwise). Prefer the plain HTTP proxy over `sock
 | Packaging and profile wiring | `apps/desktop/scripts/electron-builder-config.mjs`, `apps/desktop/src/main.ts`, `apps/desktop/tests/fixtures/runtime-payload-smoke.mjs`, `packages/bundle/web-app/cordis.patch.yml` |
 | Office kit resolution | `apps/desktop-host/src/office-engine.ts` |
 | Linux policy scope | `apps/desktop/scripts/desktop-policy-environment.{mjs,d.mts}`, `desktop-package-environment.mjs`, `apps/desktop/.env.linux.example` |
-| Linux window identity and icon | `apps/desktop/src/window-icon.ts`, `main.ts`, `welcome-window.ts`, `policy-test-auth.ts`, `apps/desktop/scripts/electron-builder-config.mjs` |
+| Linux window identity and icon | `apps/desktop/package.json` (`desktopName`), `apps/desktop/src/window-icon.ts`, `main.ts`, `welcome-window.ts`, `policy-test-auth.ts`, `apps/desktop/scripts/electron-builder-config.mjs` |
 | Rationale | `.agents/notes/implemented/architecture/2026-09-29-electron-linux-raster-worker.md` |
 
 ## Verification

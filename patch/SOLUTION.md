@@ -94,8 +94,10 @@ desktopFile: deepseek-ai-dsh-desktop         ← the entry KWin looks for
 
 The packaged entry is `deepseek-harness.desktop`, so the taskbar matched no application: it grouped
 and pinned the window separately and showed a placeholder. Electron reads the desktop-file name
-before a main script runs — setting `CHROME_DESKTOP` there does not help (verified) — but
-`app.setDesktopName()` does, and it does not change `app.getName()` or the user-data directory.
+before a main script runs, so setting `CHROME_DESKTOP` in one does not help (verified);
+`app.setDesktopName()` works, and so does the packaged `desktopName` field, which electron-builder
+also uses to name the entry and its `StartupWMClass`. The packaged field is the one source, because
+the Host renaming the executable cannot silently break the association.
 
 Separately, no window passed an `icon` option. Wayland carries a window icon through
 `xdg-toplevel-icon-v1` and X11 through `_NET_WM_ICON`, so a window that sets none shows a placeholder
@@ -126,10 +128,11 @@ script resolves to its `app.asar.unpacked` sibling whenever the module itself si
 their unpacked copies, where an absent path is absent for the kit's probe and for the native child
 processes that read those files.
 
-**Windows carry their application identity and icon.** `main.ts` sets Electron's desktop-file name
-to `deepseek-harness.desktop`, the entry the packaging names from `executableName` and whose
-`StartupWMClass` records the same value, and `window-icon.ts` supplies the packaged icon to every
-Desktop window.
+**Windows carry their application identity and icon.** The package declares `desktopName`, which
+Electron reports as the window application id and which electron-builder uses to name the entry file,
+its icon reference, and its `StartupWMClass` (`linux.syncDesktopName`), so identity has one home;
+`window-icon.ts` supplies the packaged icon to every Desktop window, and the entry labels the
+application `dsh-desktop` in the menu.
 
 **Policy resolution is platform-aware.** `resolveDesktopPolicyEnvironment(environment, platform)`
 returns no policy for any target other than macOS and Windows, the packaged metadata is written only
@@ -154,6 +157,7 @@ recording enforcement that cannot happen.
 ## Commits
 
 ```
+eb3605a654 fix(desktop): label the Linux application entry dsh-desktop
 819317c60b fix(desktop): give Linux windows their application identity and icon
 d020540c38 docs: record the Linux raster worker, kit resolution, and policy scope
 8e49e39825 fix(desktop): keep the mandatory-update policy out of Linux packages
