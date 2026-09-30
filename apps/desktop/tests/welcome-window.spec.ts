@@ -9,8 +9,9 @@ const electron = vi.hoisted(() => ({
   handlers: new Map<string, (event: unknown, value?: unknown, attributes?: unknown) => Promise<unknown>>(),
 }))
 vi.mock('electron', () => ({
-  app: { getAppPath: () => electron.root },
+  app: { getAppPath: () => electron.root, isPackaged: false },
   BrowserWindow: vi.fn(function (options: unknown) { return electron.create(options) }),
+  nativeImage: { createFromPath: (path: string) => ({ path }) },
   ipcMain: {
     handle: (name: string, handler: (event: unknown, value?: unknown, attributes?: unknown) => Promise<unknown>) => {
       if (electron.handlers.has(name)) throw new Error(`duplicate IPC handler: ${name}`)

@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto'
 import { BrowserWindow, session } from 'electron'
 import type { DesktopLocale } from './locale.ts'
+import { desktopWindowIcon } from './window-icon.ts'
 
 /** Packaged placeholder document; it is the window's first document and needs no network. */
 const LOGIN_LOADING_PAGE = 'renderer/policy-login-loading.html'
@@ -70,7 +71,8 @@ export class DesktopPolicyTestAuth {
     if (this.pending !== undefined) { this.focus(); return this.pending }
     const result = Promise.withResolvers<DesktopPolicyLoginResult>()
     const parent = this.parent()
-    const window = new BrowserWindow({ width: 720, height: 760, ...(parent === undefined ? {} : { parent }),
+    const window = new BrowserWindow({ ...desktopWindowIcon(), width: 720, height: 760,
+      ...(parent === undefined ? {} : { parent }),
       title: this.locale.messages.policyLoginTitle, autoHideMenuBar: true,
       webPreferences: { session: this.browserSession, nodeIntegration: false, contextIsolation: true,
         sandbox: true, webSecurity: true, webviewTag: false, devTools: true, spellcheck: false } })
