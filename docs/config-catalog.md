@@ -348,7 +348,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-attachment-local`
 
-- `source`: [`packages/attachment/attachment-local/src/index.ts:61`](../packages/attachment/attachment-local/src/index.ts)
+- `source`: [`packages/attachment/attachment-local/src/index.ts:62`](../packages/attachment/attachment-local/src/index.ts)
 
 ```ts config-catalog
 /** Local attachment backend configuration. */
@@ -376,6 +376,19 @@ export interface Config {
   normalizedImageMaxBytes?: number
   /** Maximum simultaneous normalization or request-image transformations in this service instance. */
   imageCompressionConcurrency?: number
+  /**
+   * Absolute plain Node executable that runs raster work outside this process.
+   * Required when the store runs under Electron on Linux, where Sharp's
+   * prebuilt libvips crashes in an Electron process space; every other runtime
+   * keeps in-process raster work and ignores this value.
+   */
+  rasterNode?: string
+  /**
+   * Absolute worker entry when a deployment relocates it; omitted uses the
+   * built entry beside this package, which a packaged host resolves out of
+   * `app.asar` into its unpacked directory.
+   */
+  rasterWorker?: string
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-attachment-local -->

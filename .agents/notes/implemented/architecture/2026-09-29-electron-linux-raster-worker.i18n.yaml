@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for 2026-09-29-electron-linux-raster-worker.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-29-electron-linux-raster-worker.md
+/agent-note-run-raster-work-in-a-plain-node-worker-on-electron-linux:
+  en: 0196341ff3ef937a
+  zh: 3486aaa3a55c4b67
+/agent-note-run-raster-work-in-a-plain-node-worker-on-electron-linux/problem:
+  en: 9577f806cb05c9b2
+  zh: d5c4195cc62190ca
+/agent-note-run-raster-work-in-a-plain-node-worker-on-electron-linux/decision:
+  en: b41ede677fcdb6af
+  zh: fa5764ecc2d691bb
+/agent-note-run-raster-work-in-a-plain-node-worker-on-electron-linux/decision/packaging:
+  en: af174598ca9d1a30
+  zh: 700863c9d614936d
+/agent-note-run-raster-work-in-a-plain-node-worker-on-electron-linux/alternatives-considered:
+  en: c075430ff40888e6
+  zh: 241ab2efb89df3cf
+/agent-note-run-raster-work-in-a-plain-node-worker-on-electron-linux/consequences:
+  en: 3b30d602b7f61323
+  zh: b1dc786823195f1e
+/agent-note-run-raster-work-in-a-plain-node-worker-on-electron-linux/testing:
+  en: d623699cfbd4b4f0
+  zh: 851bd30e203484d7
+/agent-note-run-raster-work-in-a-plain-node-worker-on-electron-linux/deferred:
+  en: 105ca94197a188b2
+  zh: 20e073ad02997bde
+/agent-note-run-raster-work-in-a-plain-node-worker-on-electron-linux/related:
+  en: 19eae7fc15fc4060
+  zh: 858a3374c180b5ff
