@@ -240,6 +240,9 @@ export function createElectronBuilderConfig(
       category: 'Development',
       // electron-builder otherwise derives the executable name from the scoped package name.
       executableName: 'deepseek-harness',
+      // Linux window managers match a window to this entry by application id; the Host sets
+      // CHROME_DESKTOP to the entry name derived from `executableName`, so the X11 class must agree.
+      desktop: { entry: { StartupWMClass: 'deepseek-harness' } },
       target: ['AppImage'],
     },
     nsis: {

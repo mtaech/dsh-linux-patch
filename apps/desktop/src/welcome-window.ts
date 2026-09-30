@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, ipcMain, type BrowserWindowConstructorOptions, type IpcMainInvokeEvent } from 'electron'
 import type { DesktopLocale } from './locale.ts'
 import { WELCOME_IPC, type WelcomeOperations } from './welcome-api.ts'
+import { desktopWindowIcon } from './window-icon.ts'
 
 /**
  * Resolve the fixed-size welcome window's native material and controls.
@@ -58,7 +59,7 @@ let disposeActiveHandlers: (() => void) | undefined
  */
 export async function openWelcomeWindow(locale: DesktopLocale, operations: WelcomeOperations): Promise<BrowserWindow> {
   const options = welcomeWindowOptions(process.platform, locale)
-  const window = new BrowserWindow(options)
+  const window = new BrowserWindow({ ...options, ...desktopWindowIcon() })
   disposeActiveHandlers?.()
   let active = true
   const disposeHandlers = (): void => {

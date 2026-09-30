@@ -6,6 +6,8 @@ import type { BrowserWindowConstructorOptions } from 'electron'
 
 const native = vi.hoisted(() => ({ create: vi.fn<(options: BrowserWindowConstructorOptions) => object>(), partition: vi.fn() }))
 vi.mock('electron', () => ({ BrowserWindow: function (options: BrowserWindowConstructorOptions) { return native.create(options) },
+  app: { isPackaged: false, getAppPath: () => '/desktop-app' },
+  nativeImage: { createFromPath: () => ({}) },
   session: { fromPartition: native.partition } }))
 
 let auth: DesktopPolicyTestAuth
