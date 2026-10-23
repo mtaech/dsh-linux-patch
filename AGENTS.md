@@ -120,6 +120,10 @@ Before pushing, follow [dsh-pre-push-checks](.agents/skills/dsh-pre-push-checks/
 - Develop with `build:artifacts`; before claiming completion, run `build:check` after the latest `build:artifacts`, or `build` ([layout](docs/development.md#typescript-project-layout)).
 - **Web browser automation and GIF recording:** launch with `pnpm dsh web --patch apps/web/tests/pin-browse-picker.overlay.yml` to use the [in-page directory picker](apps/web/tests/pin-browse-picker.overlay.yml); omit this override only when testing native picker behavior explicitly.
 
+## Remotes
+
+`origin` (`deepseek-ai/deepseek-harness`) is read-only for `mtaech`: pushes, tags, PRs, and releases return 403. Write operations go to the `dsh-linux-patch` remote (`mtaech/dsh-linux-patch`), where Linux patch releases are tagged `v<upstream-version>-linux.<n>` on a `release/linux-<upstream-version>` branch and published as Pre-releases with the AppImage and `SHA256SUMS`.
+
 ## Secrets / .env
 
 Windows packaging/signing: [required reading](apps/desktop/windows-signing/README.md).
