@@ -122,7 +122,7 @@ Before pushing, follow [dsh-pre-push-checks](.agents/skills/dsh-pre-push-checks/
 
 ## Remotes
 
-`origin` (`deepseek-ai/deepseek-harness`) is read-only for `mtaech`: pushes, tags, PRs, and releases return 403. Write operations go to the `dsh-linux-patch` remote (`mtaech/dsh-linux-patch`), where Linux patch releases are tagged `v<upstream-version>-linux.<n>` on a `release/linux-<upstream-version>` branch and published as Pre-releases with the AppImage and `SHA256SUMS`.
+`origin` (`deepseek-ai/deepseek-harness`) is read-only for `mtaech`: pushes, tags, PRs, and releases return 403. Write operations go to the `dsh-linux-patch` remote (`mtaech/dsh-linux-patch`), where Linux patch releases are tagged `v<upstream-version>-linux.<n>` on a `release/linux-<upstream-version>` branch and published as Pre-releases with the AppImage and `SHA256SUMS`. Each release also refreshes the `nightly-linux.yml` asset on the permanent `feed` release, whose entries point at that release's AppImage; installed packages poll it through `DSH_DESKTOP_LINUX_UPDATE_FEED`.
 
 ## Secrets / .env
 
