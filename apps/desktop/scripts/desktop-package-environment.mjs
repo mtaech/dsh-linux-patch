@@ -19,7 +19,8 @@ const SHARED_SETTING = /^(?:DSH_DESKTOP_(?:APP_ID|AUTO_UPDATE_ENV|NPM_REGISTRY|M
 const WINDOWS_SETTING = /^DSH_DESKTOP_WINDOWS_(?:CER_FILE|SIGNTOOL|KEY_CONTAINER|TOKEN_PIN|SIGNATURE_CACHE_DIR|SIGNATURE_CACHE_CONCURRENCY|PACK_CONCURRENCY|COMPRESSION_LEVEL)$/u
 const MACOS_SETTING = /^(?:DSH_DESKTOP_MACOS_(?:SIGNING_IDENTITY|TEAM_ID|SIGNATURE_CACHE_DIR|PACK_CONCURRENCY|ZIP_COMPRESSION_LEVEL|DOWNLOAD_PROXY|NOTARIZATION_PROXY)|APPLE_(?:API_KEY|API_KEY_ID|API_ISSUER|ID|APP_SPECIFIC_PASSWORD|TEAM_ID|KEYCHAIN|KEYCHAIN_PROFILE)|CSC_(?:LINK|KEY_PASSWORD))$/u
 // Linux packaging needs no platform-specific release setting: it neither signs nor notarizes.
-const LINUX_SETTING = /^$/u
+// The Linux feed override names the release host whose channel file the updater polls.
+const LINUX_SETTING = /^DSH_DESKTOP_LINUX_UPDATE_FEED$/u
 // Mandatory updates are a macOS and Windows capability, so a Linux package must not carry their
 // settings: they would be recorded nowhere and only suggest an enforcement that cannot happen.
 const PLATFORM_FORBIDDEN = { win32: /^$/u, darwin: /^$/u, linux: /^DSH_DESKTOP_MANDATORY_UPDATE_/u }

@@ -113,3 +113,11 @@ export function resolveDesktopUpdateChannel(env: NodeJS.ProcessEnv): 'nightly' |
  * @returns Trimmed setting value.
  */
 export function requiredEnvironmentValue(env: NodeJS.ProcessEnv, name: string): string
+
+/**
+ * Resolve the optional Linux feed base that replaces the packaged updater URL.
+ * @param env Packaging settings.
+ * @returns Feed base URL with a trailing slash, or undefined for the deployment origin.
+ * @throws Error When the setting is present but not an HTTPS directory URL.
+ */
+export function resolveLinuxUpdateFeedUrl(env: NodeJS.ProcessEnv): string | undefined

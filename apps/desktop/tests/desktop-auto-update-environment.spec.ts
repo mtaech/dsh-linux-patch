@@ -6,9 +6,29 @@ import {
   resolveDesktopAutoUpdateEnvironment,
   resolveDesktopAutoUpdateTarget,
   resolveDesktopUploadConfig,
+  resolveLinuxUpdateFeedUrl,
 } from '../scripts/desktop-auto-update-environment.mjs'
 
 const RELEASE_ID = '0123456789abcdef0123456789abcdef'
+
+describe('Linux update feed override', () => {
+  it.each([undefined, '', ' '])('keeps the deployment origin when the override is %j', (value) => {
+    expect(resolveLinuxUpdateFeedUrl(value === undefined ? {} : { DSH_DESKTOP_LINUX_UPDATE_FEED: value })).toBeUndefined()
+  })
+
+  it('appends the trailing slash the channel filename resolution needs', () => {
+    expect(resolveLinuxUpdateFeedUrl({ DSH_DESKTOP_LINUX_UPDATE_FEED: 'https://releases.example.com/updates/download/feed' }))
+      .toBe('https://releases.example.com/updates/download/feed/')
+    expect(resolveLinuxUpdateFeedUrl({ DSH_DESKTOP_LINUX_UPDATE_FEED: 'https://releases.example.com/updates/download/feed/' }))
+      .toBe('https://releases.example.com/updates/download/feed/')
+  })
+
+  it.each(['http://releases.example.com/feed/', 'https://user:pass@releases.example.com/feed/',
+    'https://releases.example.com/feed/?x=1', 'https://releases.example.com/feed/#tag',
+    'https://releases.example.com/', 'not a url'])('rejects the override %j', (value) => {
+    expect(() => resolveLinuxUpdateFeedUrl({ DSH_DESKTOP_LINUX_UPDATE_FEED: value })).toThrow(/DSH_DESKTOP_LINUX_UPDATE_FEED/u)
+  })
+})
 
 describe('desktop auto-update environment', () => {
   it.each([undefined, 'test'])('requires a release ID for deployment %s', (deployment) => {

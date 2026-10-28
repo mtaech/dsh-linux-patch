@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for 2026-10-28-desktop-linux-github-update-feed.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-28-desktop-linux-github-update-feed.md
+/agent-note-desktop-linux-packages-poll-a-github-hosted-update-feed:
+  en: 84fb572ca1ba81ce
+  zh: 85a7c47715c25b27
+/agent-note-desktop-linux-packages-poll-a-github-hosted-update-feed/problem:
+  en: 6f3c9d3fa3b67e68
+  zh: d81bfc832f4fa5e1
+/agent-note-desktop-linux-packages-poll-a-github-hosted-update-feed/decision:
+  en: 1e85d5e65a471296
+  zh: 79a0ae9fde113c33
+/agent-note-desktop-linux-packages-poll-a-github-hosted-update-feed/alternatives-considered:
+  en: 12d4f73b6400853c
+  zh: 3711cff8ed22a704
+/agent-note-desktop-linux-packages-poll-a-github-hosted-update-feed/consequences:
+  en: f51c5f11e52bba0b
+  zh: 1eefe2d1cf8e1016
+/agent-note-desktop-linux-packages-poll-a-github-hosted-update-feed/testing:
+  en: 98a84e624db8e2db
+  zh: 3ca32c916cd32833

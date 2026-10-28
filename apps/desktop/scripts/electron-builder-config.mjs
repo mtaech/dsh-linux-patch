@@ -20,7 +20,7 @@ import {
   resolveWindowsUpdatePublisher,
   scrubWindowsSigningEnvironment,
 } from './windows-sign.mjs'
-import { resolveDesktopAutoUpdateConfig } from './desktop-auto-update-environment.mjs'
+import { resolveDesktopAutoUpdateConfig, resolveLinuxUpdateFeedUrl } from './desktop-auto-update-environment.mjs'
 import { resolveDesktopBuildCommit } from './desktop-build-commit.mjs'
 import { resolveDesktopBuildVersion } from './desktop-build-version.mjs'
 import { resolveDesktopPolicyEnvironment } from './desktop-policy-environment.mjs'
@@ -283,6 +283,13 @@ export function createElectronBuilderConfig(
       differentialPackage: true,
     },
     detectUpdateChannel: false,
-    publish: update === undefined ? null : [{ provider: 'generic', url: update.publicUrl, channel: update.channel }],
+    // A Linux package may poll a release host whose channel URL carries a path, which the fixed
+    // deployment origins cannot express; the override base must end in / so the channel filename
+    // electron-updater appends resolves inside it.
+    publish: update === undefined ? null : [{
+      provider: 'generic',
+      url: resolvedPlatform === 'linux' ? resolveLinuxUpdateFeedUrl(env) ?? update.publicUrl : update.publicUrl,
+      channel: update.channel,
+    }],
   }
 }

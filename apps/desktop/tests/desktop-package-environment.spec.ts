@@ -217,6 +217,17 @@ describe('Desktop local packaging configuration', () => {
     })
   })
 
+  it('accepts the Linux feed override in .env.linux and rejects it elsewhere', async () => {
+    await withDirectory(async (directory) => {
+      await writeFile(join(directory, '.env.linux'),
+        'DSH_DESKTOP_LINUX_UPDATE_FEED=https://releases.example.com/updates/download/feed\n')
+      expect(loadDesktopPackageEnvironment('linux', {}, directory).DSH_DESKTOP_LINUX_UPDATE_FEED)
+        .toBe('https://releases.example.com/updates/download/feed')
+      await writeFile(join(directory, '.env.windows'), 'DSH_DESKTOP_LINUX_UPDATE_FEED=https://releases.example.com/updates/download/feed\n')
+      expect(() => loadDesktopPackageEnvironment('win32', {}, directory)).toThrow(/unsupported setting DSH_DESKTOP_LINUX_UPDATE_FEED/u)
+    })
+  })
+
   it('loads the Linux file and validates Linux without signing or notarization settings', async () => {
     await withDirectory(async (directory) => {
       expect(() => loadDesktopPackageEnvironment('linux', LINUX_RELEASE, directory)).toThrow(/copy .*\.env\.linux\.example/u)

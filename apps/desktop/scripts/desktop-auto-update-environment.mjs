@@ -5,6 +5,9 @@ import { valid } from 'semver'
 /** Environment variable that selects the Desktop update deployment. */
 export const DESKTOP_AUTO_UPDATE_ENV = 'DSH_DESKTOP_AUTO_UPDATE_ENV'
 
+/** Environment variable that replaces the packaged Linux updater feed base URL. */
+export const DESKTOP_LINUX_UPDATE_FEED = 'DSH_DESKTOP_LINUX_UPDATE_FEED'
+
 /**
  * Resolve the channel embedded in the installer; omitted local settings retain nightly.
  * @param {NodeJS.ProcessEnv} env Packaging or upload settings.
@@ -199,4 +202,29 @@ export function resolveDesktopUploadConfig(env, platform, arch) {
     secretIdEnvName: deployment.secretIdEnvName,
     secretKeyEnvName: deployment.secretKeyEnvName,
   }
+}
+
+/**
+ * Resolve the optional Linux feed base that replaces the packaged updater URL.
+ * A Linux package may serve updates from a release host that cannot be expressed as a bare origin;
+ * the updater appends the channel filename, so the value must resolve as a directory URL.
+ * @param {NodeJS.ProcessEnv} env - Packaging settings.
+ * @returns {string | undefined} Feed base URL with a trailing slash, or undefined for the deployment origin.
+ * @throws {Error} When the setting is present but not an HTTPS directory URL.
+ */
+export function resolveLinuxUpdateFeedUrl(env) {
+  const value = env[DESKTOP_LINUX_UPDATE_FEED]?.trim()
+  if (value === undefined || value === '') return undefined
+  let parsed
+  try {
+    parsed = new URL(value)
+  }
+  catch {
+    throw new Error(`desktop auto-update: ${DESKTOP_LINUX_UPDATE_FEED} must be an absolute HTTPS URL`)
+  }
+  if (parsed.protocol !== 'https:' || parsed.username !== '' || parsed.password !== ''
+    || parsed.pathname === '/' || parsed.search !== '' || parsed.hash !== '') {
+    throw new Error(`desktop auto-update: ${DESKTOP_LINUX_UPDATE_FEED} must be an HTTPS URL with a path and without credentials, query, or fragment`)
+  }
+  return `${parsed.origin}${parsed.pathname.endsWith('/') ? parsed.pathname : `${parsed.pathname}/`}`
 }
