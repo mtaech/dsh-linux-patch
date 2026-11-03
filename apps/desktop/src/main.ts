@@ -535,6 +535,10 @@ async function main(): Promise<void> {
       start: async () => {
         const ready = await host.start()
         hostCookie = await authenticateWebHost(ready.url)
+        // Each launch mints one cookie named for its loopback authority, and the default
+        // session keeps every previous launch's cookie on the same host. Left in place they
+        // grow the Cookie header past the Host's limit until welcome authentication fails.
+        await session.defaultSession.clearStorageData({ origin: new URL(ready.url).origin, storages: ['cookies'] })
         hostUrl = ready.url
         if (ready.injections === undefined) throw new Error('Desktop Host did not provide boot injections')
         injections = ready.injections

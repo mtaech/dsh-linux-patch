@@ -20,6 +20,8 @@ const state = vi.hoisted(() => ({
     status: 'signed-out', attempt: null, links: { usageUrl: '', topUpUrl: '' },
   }),
   quit: vi.fn(),
+  clearCookies: vi.fn(async () => {}),
+  connectWelcome: vi.fn(),
   startHost: vi.fn().mockResolvedValue({ url: 'http://127.0.0.1:3080/?token=test', injections: [] }),
   stopHost: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
   loadWorkspace: vi.fn<(url: string) => Promise<void>>().mockResolvedValue(undefined),
@@ -88,6 +90,7 @@ vi.mock('electron', () => ({
   nativeTheme: state.nativeTheme,
   session: { defaultSession: {
     setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn(), webRequest: { onBeforeSendHeaders: vi.fn() },
+    clearStorageData: state.clearCookies,
   } },
   protocol: { registerSchemesAsPrivileged: vi.fn(), handle: vi.fn() },
   ipcMain: {
@@ -123,23 +126,26 @@ vi.mock('../src/host-process.ts', () => ({
   },
 }))
 vi.mock('../src/welcome-backend.ts', () => ({
-  connectDesktopWelcome: async () => ({
-    analyticsEnabled: async () => false,
-    readLocalePreference: async () => state.preference,
-    read: async () => {
-      await state.beforeRead()
-      return { loggedIn: false, hasApiKey: state.hasApiKey, writable: true, localePreference: state.preference }
-    },
-    save: async () => ({ ok: true }),
-    account: {
-      watch: (listener: (value: AccountView) => void, _failed: () => void, expired: () => void) => {
-        state.accountListener = listener
-        state.expiryListener = expired
-        return () => {}
+  connectDesktopWelcome: async () => {
+    state.connectWelcome()
+    return {
+      analyticsEnabled: async () => false,
+      readLocalePreference: async () => state.preference,
+      read: async () => {
+        await state.beforeRead()
+        return { loggedIn: false, hasApiKey: state.hasApiKey, writable: true, localePreference: state.preference }
       },
-      state: state.accountState,
-    },
-  }),
+      save: async () => ({ ok: true }),
+      account: {
+        watch: (listener: (value: AccountView) => void, _failed: () => void, expired: () => void) => {
+          state.accountListener = listener
+          state.expiryListener = expired
+          return () => {}
+        },
+        state: state.accountState,
+      },
+    }
+  },
 }))
 vi.mock('node:fs/promises', async importOriginal => ({
   ...await importOriginal<typeof import('node:fs/promises')>(),
@@ -214,6 +220,9 @@ it.each([false, true])('starts welcome onboarding without carrying update focus 
   }
   await vi.waitFor(() => { expect(state.operations).toBeDefined() })
   expect(state.startHost).toHaveBeenCalledOnce()
+  // Stale per-launch cookies for the loopback Host would otherwise accumulate in the default session.
+  expect(state.clearCookies).toHaveBeenCalledExactlyOnceWith({ origin: 'http://127.0.0.1:3080', storages: ['cookies'] })
+  expect(state.clearCookies.mock.invocationCallOrder[0]!).toBeLessThan(state.connectWelcome.mock.invocationCallOrder[0]!)
   expect(state.loadWorkspace).toHaveBeenCalledExactlyOnceWith('dsh-app://app/')
   expect(state.showWorkspace).not.toHaveBeenCalled()
   state.loadWorkspace.mockClear()
