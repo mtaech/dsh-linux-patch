@@ -5,10 +5,13 @@ import { emptyBrowserFrame, type BrowserFrame, type BrowserFrameState, type Brow
 import type { BrowserPageOptions } from './BrowserPage.ts'
 import { BrowserNavigation } from './BrowserNavigation.ts'
 import type { BrowserTarget } from './url.ts'
+import type { BrowserZoomControl } from './BrowserZoom.ts'
 
 /** Owns iframe navigation; the view reports loads without reading cross-origin content. */
 export class IframeImpl implements BrowserFrame {
   readonly sandbox: BrowserSandboxControl = { setEnabled: (enabled) => { this.setSandbox(enabled) } }
+  /** The iframe scales itself, since a cross-origin page cannot be zoomed from here. */
+  readonly zoom: BrowserZoomControl = { setZoom: (factor) => { this.presentation.setZoom(factor) } }
   private readonly navigation: BrowserNavigation
   private readonly store: SnapshotStore<BrowserFrameState>
   private sandboxed = true

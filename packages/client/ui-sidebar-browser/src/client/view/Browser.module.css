@@ -376,3 +376,56 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.zoomGroup {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0;
+  height: 24px;
+  border: 0.5px solid var(--dsw-alias-border-secondary);
+  border-radius: var(--dsw-radius-sm);
+}
+
+.zoomButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 100%;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: var(--dsw-alias-label-primary);
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+
+  &:disabled {
+    color: var(--dsw-alias-label-quaternary);
+    cursor: default;
+  }
+}
+
+.zoomValue {
+  min-width: 42px;
+  height: 100%;
+  padding: 0 2px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+
+  &:hover {
+    color: var(--dsw-alias-label-primary);
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}

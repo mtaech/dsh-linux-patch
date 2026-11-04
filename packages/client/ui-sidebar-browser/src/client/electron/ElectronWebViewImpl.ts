@@ -7,6 +7,7 @@ import type { BrowserPageOptions } from '../browser/BrowserPage.ts'
 import { browserAddressCheckpoint, currentBrowserTarget } from '../browser/BrowserPersistence.ts'
 import { newAnnotationRequestId, toBrowserAnnotationCapture, type BrowserAnnotationCapture, type BrowserAnnotationControl } from '../browser/BrowserAnnotation.ts'
 import { parseBrowserAddress, type BrowserTarget } from '../browser/url.ts'
+import type { BrowserZoomControl } from '../browser/BrowserZoom.ts'
 
 interface NavigationEvent extends Event { readonly isMainFrame: boolean }
 interface LoadFailureEvent extends NavigationEvent {
@@ -31,6 +32,7 @@ export class ElectronWebViewImpl implements BrowserFrame {
   private disposal: Promise<void> | undefined
   private attachment: AbortController | undefined
   private captureLifetime: AbortController | undefined
+  private zoomFactor: number | undefined
   private readonly releases = new Set<Promise<void>>()
 
   /**
@@ -50,6 +52,11 @@ export class ElectronWebViewImpl implements BrowserFrame {
   getSnapshot = (): BrowserFrameState => this.store.getSnapshot()
   /** @param listener - state invalidation. @returns unsubscribe callback. */
   subscribe = (listener: () => void): (() => void) => this.store.subscribe(listener)
+
+  /** Page zoom, offered only when the shell's bridge supports it. */
+  get zoom(): BrowserZoomControl | undefined {
+    return this.bridge.zoom === undefined ? undefined : { setZoom: (factor: number) => { this.applyZoom(factor) } }
+  }
 
   /** Element capture, offered only when the shell's bridge supports annotations. */
   get annotations(): BrowserAnnotationControl | undefined {
@@ -85,6 +92,21 @@ export class ElectronWebViewImpl implements BrowserFrame {
       combined.removeEventListener('abort', cancel)
       if (this.captureLifetime === controller) this.captureLifetime = undefined
     }
+  }
+
+  /**
+   * Remember a requested zoom and forward it to the live guest; a guest created later
+   * receives the same factor once its document is ready.
+   * @param factor - one-based scale where 1 keeps the page's own size.
+   */
+  private applyZoom(factor: number): void {
+    this.zoomFactor = factor
+    const lease = this.lease
+    const zoom = this.bridge.zoom
+    if (lease === undefined || zoom === undefined || !this.ready) return
+    void zoom.setZoom(lease, factor).catch((error: unknown) => {
+      console.error('Desktop browser zoom failed', error)
+    })
   }
 
   /** Stop the in-flight element capture before the page or guest changes underneath it. */
@@ -206,6 +228,11 @@ export class ElectronWebViewImpl implements BrowserFrame {
     signal.addEventListener('abort', unsubscribeOpen, { once: true })
     element.addEventListener('dom-ready', () => {
       this.ready = true
+      if (this.zoomFactor !== undefined) {
+        void this.bridge.zoom?.setZoom(reservation.lease, this.zoomFactor).catch((error: unknown) => {
+          console.error('Desktop browser zoom failed', error)
+        })
+      }
       this.observe(this.store.getSnapshot().address !== 'requested')
       this.loadPending()
     }, { signal })

@@ -27,6 +27,12 @@ export function createDesktopBrowserBridge(): DesktopBrowserBridge {
       cancel: (lease: DesktopBrowserLeaseId, requestId: DesktopBrowserAnnotationRequestId): Promise<void> =>
         ipcRenderer.invoke(DESKTOP_IPC.browserAnnotateCancel, lease, requestId) as Promise<void>,
     },
+    zoom: {
+      setZoom: (lease: DesktopBrowserLeaseId, factor: number): Promise<number | undefined> =>
+        ipcRenderer.invoke(DESKTOP_IPC.browserZoomSet, lease, factor) as Promise<number | undefined>,
+      getZoom: (lease: DesktopBrowserLeaseId): Promise<number | undefined> =>
+        ipcRenderer.invoke(DESKTOP_IPC.browserZoomGet, lease) as Promise<number | undefined>,
+    },
     onOpenRequested(lease, listener) {
       let callbacks = listeners.get(lease)
       if (callbacks === undefined) { callbacks = new Set(); listeners.set(lease, callbacks) }

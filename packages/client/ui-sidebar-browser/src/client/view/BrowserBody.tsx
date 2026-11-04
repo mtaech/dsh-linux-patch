@@ -17,6 +17,8 @@ import type { InjectFace, PropsLocale, PropsRuntime, PropsStore } from '@deepsee
 import { formatBrowserAnnotation, nextAnnotationNumber } from '../browser/BrowserAnnotation.ts'
 import type { BrowserAnnotationCapture } from '../browser/BrowserAnnotation.ts'
 import type { BrowserInjected } from '../browser/BrowserController.ts'
+import { BROWSER_ZOOM_STEPS, DEFAULT_BROWSER_ZOOM, MAX_BROWSER_ZOOM, formatBrowserZoom,
+  normalizeBrowserZoom } from '../browser/BrowserZoom.ts'
 import { emptyBrowserFrame } from '../browser/BrowserFrame.ts'
 import { currentBrowserTarget } from '../browser/BrowserPersistence.ts'
 import type { BrowserStore } from '../browser/store.ts'
@@ -60,16 +62,20 @@ function useBrowserDraft(url: string | undefined, revision: number): readonly [s
 /** Render provider-neutral navigation state and optional controls. */
 export function BrowserBody(props: BrowserBodyProps): ReactNode {
   const { mount, loadUrl, restore, goBack, goForward, reload, setSandbox, beginAnnotation, cancelAnnotation,
-    annotationDrafts, useBrowserState, useStore, useTabInfo, useInput, inputActions, t } = props
+    annotationDrafts, useBrowserState, useStore, useTabInfo, useInput, inputActions,
+    setZoom, stepZoom, zoomOf, t } = props
   const { tab } = useTabInfo()
   useEffect(() => tab.actions.bindCommands({ refresh: () => { reload(tab.id) } }), [tab.actions, tab.id, reload])
   const saved = useStore(state => state.byTab[tab.id])
   const initial = useRef(saved)
   const initialUrl = useRef(tab.navigation.params?.url)
+  const initialZoom = useRef(zoomOf?.(tab.id))
   const viewportId = useId()
   const [mountEpoch, setMountEpoch] = useState(0)
   const state = useBrowserState(tab.id)
   const frame = state?.frame ?? EMPTY_FRAME
+  const zoom = state?.zoom ?? DEFAULT_BROWSER_ZOOM
+  const canZoom = state?.canZoom === true
   const restoreTarget = state === undefined ? currentBrowserTarget(initial.current) : state.restoreTarget
   const target = frame.target ?? restoreTarget
   const [draft, setDraft] = useBrowserDraft(target?.url ?? initialUrl.current, state?.addressRevision ?? 0)
@@ -85,7 +91,7 @@ export function BrowserBody(props: BrowserBodyProps): ReactNode {
   useLayoutEffect(() => {
     const hide = mount({
       tabId: tab.id, signal: tab.signal, viewportId, applicationOrigin: window.location.origin,
-      initial: initial.current, initialUrl: initialUrl.current,
+      initial: initial.current, initialUrl: initialUrl.current, initialZoom: initialZoom.current,
       openTab: (url) => { tab.actions.openTab('browser', { params: { url }, revealIfOpened: false }) },
     })
     setMountEpoch(value => value + 1)
@@ -205,6 +211,15 @@ export function BrowserBody(props: BrowserBodyProps): ReactNode {
           {unknown && <span className={css.addressChanged}>{t('address.changed')}</span>}
           <button type="submit" className={[css.tool, css.addressGo].join(' ')} aria-label={t('go')} title={t('go')}><IconLinkOutlineRegular /></button>
         </div>
+        {canZoom && <div className={css.zoomGroup} role="group" aria-label={t('zoom.group')}>
+          <button type="button" className={css.zoomButton} aria-label={t('zoom.out')} title={t('zoom.out')}
+            disabled={zoom <= BROWSER_ZOOM_STEPS[0]} onClick={() => { stepZoom(tab.id, 'out') }}>−</button>
+          <button type="button" className={css.zoomValue} aria-label={t('zoom.reset')} title={t('zoom.reset')}
+            onClick={() => { setZoom(tab.id, DEFAULT_BROWSER_ZOOM) }}>{formatBrowserZoom(zoom)}</button>
+          <button type="button" className={css.zoomButton} aria-label={t('zoom.in')} title={t('zoom.in')}
+            disabled={normalizeBrowserZoom(zoom) >= MAX_BROWSER_ZOOM}
+            onClick={() => { stepZoom(tab.id, 'in') }}>+</button>
+        </div>}
         <button type="button" className={css.tool} aria-label={t('external')} title={t('external')} disabled={externalUrl === undefined}
           onClick={externalUrl === undefined ? undefined : () => { window.open(externalUrl, '_blank', 'noopener,noreferrer') }}
         ><IconRightUpOutlineRegular size={14} /></button>

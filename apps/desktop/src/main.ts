@@ -63,6 +63,7 @@ import { readDesktopLocaleCache, writeDesktopLocaleCache } from './locale-cache.
 import { DesktopUpdateDialog, type UpdateDialogOptions } from './update-dialog.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { DesktopBrowserGuests } from './browser-guests.ts'
+import { DesktopBrowserZoom } from './browser-zoom.ts'
 import { DesktopBrowserAnnotations } from './browser-annotation.ts'
 import { installDesktopShortcuts } from './keyboard.ts'
 import { DesktopUpdateOverlays } from './update-overlay.ts'
@@ -477,6 +478,7 @@ async function main(): Promise<void> {
   let hostUrl: string | undefined
   let hostCookie: string | undefined
   const browserGuests = new DesktopBrowserGuests(() => hostUrl)
+  const browserZoom = new DesktopBrowserZoom(browserGuests)
   const browserAnnotations = new DesktopBrowserAnnotations(browserGuests)
   let injections: readonly unknown[] = []
   let welcomeBackend: DesktopWelcomeBackend | undefined
@@ -818,6 +820,14 @@ async function main(): Promise<void> {
   ipcMain.handle(DESKTOP_IPC.browserRelease, (event, lease: unknown) => {
     assertProductSender(event)
     return browserGuests.release(event.sender, lease)
+  })
+  ipcMain.handle(DESKTOP_IPC.browserZoomSet, (event, lease: unknown, factor: unknown) => {
+    assertProductSender(event)
+    return browserZoom.set(event.sender, lease, factor)
+  })
+  ipcMain.handle(DESKTOP_IPC.browserZoomGet, (event, lease: unknown) => {
+    assertProductSender(event)
+    return browserZoom.get(event.sender, lease)
   })
   ipcMain.handle(DESKTOP_IPC.browserAnnotateCapture, (event, lease: unknown, requestId: unknown) => {
     assertProductSender(event)

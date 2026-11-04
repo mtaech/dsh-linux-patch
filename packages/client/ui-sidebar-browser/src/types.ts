@@ -26,6 +26,8 @@ export interface DesktopBrowserBridge {
   onOpenRequested(lease: DesktopBrowserLeaseId, listener: (url: string) => void): () => void
   /** Renderer-initiated element capture for one guest; absent in older shells that predate annotation support. */
   readonly annotations?: DesktopBrowserAnnotationBridge
+  /** Page zoom for one guest; absent in older shells that predate zoom support. */
+  readonly zoom?: DesktopBrowserZoomBridge
 }
 
 /** Renderer-minted identity of one element-capture round trip. */
@@ -122,4 +124,15 @@ export interface DesktopBrowserAnnotationBridge {
    * @returns after the main process has stopped preparing it.
    */
   cancel(lease: DesktopBrowserLeaseId, requestId: DesktopBrowserAnnotationRequestId): Promise<void>
+}
+
+/** Page-zoom operations for one guest; the factor is the guest's own scale where 1 keeps the page size. */
+export interface DesktopBrowserZoomBridge {
+  /**
+   * @param lease - originating guest. @param factor - requested scale, already clamped by the renderer.
+   * @returns after the guest applied the scale, or undefined when the guest cannot be scaled.
+   */
+  setZoom(lease: DesktopBrowserLeaseId, factor: number): Promise<number | undefined>
+  /** @param lease - originating guest. @returns the guest's current scale. */
+  getZoom(lease: DesktopBrowserLeaseId): Promise<number | undefined>
 }

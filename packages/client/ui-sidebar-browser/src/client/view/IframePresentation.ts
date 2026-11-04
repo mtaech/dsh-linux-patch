@@ -12,6 +12,15 @@ interface IframeDocument {
   readonly sandboxed: boolean
 }
 
+/** The iframe is laid out at the reciprocal size so a page keeping its own viewport still fits. */
+function applyWebZoom(element: HTMLIFrameElement, factor: number): void {
+  const scale = Number.isFinite(factor) && factor > 0 ? factor : 1
+  element.style.transform = scale === 1 ? '' : `scale(${String(scale)})`
+  element.style.transformOrigin = scale === 1 ? '' : 'top left'
+  element.style.width = scale === 1 ? '' : `${String(100 / scale)}%`
+  element.style.height = scale === 1 ? '' : `${String(100 / scale)}%`
+}
+
 /** Reports only what an iframe can observe without inspecting cross-origin content. */
 export interface IframePresentationEvents {
   readonly loaded: (revision: number) => void
@@ -25,6 +34,7 @@ export class IframePresentation implements BrowserPresentation {
   private element: HTMLIFrameElement | undefined
   private document: IframeDocument | undefined
   private rendered = false
+  private zoom = 1
 
   /** @param events - provider-owned load and remount callbacks. */
   constructor(private readonly events: IframePresentationEvents) {}
@@ -55,6 +65,16 @@ export class IframePresentation implements BrowserPresentation {
     this.render()
   }
 
+  /**
+   * Scale the embedded page; a cross-origin page keeps its own layout viewport, so scaling the
+   * frame is the only web-side equivalent of page zoom.
+   * @param factor - one-based scale where 1 restores the frame's own size.
+   */
+  setZoom(factor: number): void {
+    this.zoom = factor
+    if (this.element !== undefined) applyWebZoom(this.element, factor)
+  }
+
   /** Remove the owned DOM and retained presentation data. */
   dispose(): void {
     this.element?.remove()
@@ -81,6 +101,7 @@ export class IframePresentation implements BrowserPresentation {
     element.addEventListener('error', () => {
       if (this.element === element) this.events.failed(current.revision)
     })
+    applyWebZoom(element, this.zoom)
     this.element = element
     this.rendered = true
     host.append(element)

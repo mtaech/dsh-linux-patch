@@ -5,6 +5,7 @@ import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { BrowserAnnotationCapture } from './BrowserAnnotation.ts'
 import type { BrowserFrameState } from './BrowserFrame.ts'
+import { DEFAULT_BROWSER_ZOOM, normalizeBrowserZoom, stepBrowserZoom } from './BrowserZoom.ts'
 import type { BrowserPage, BrowserPageFactory } from './BrowserPage.ts'
 import { currentBrowserTarget, type BrowserTabState } from './BrowserPersistence.ts'
 import type { BrowserStore } from './store.ts'
@@ -15,6 +16,10 @@ export interface BrowserControllerState {
   readonly frame: BrowserFrameState
   /** Whether the provider exposes element capture, gating the annotation entry. */
   readonly canAnnotate: boolean
+  /** Current page zoom; 1 keeps the page's own size. */
+  readonly zoom: number
+  /** Whether the provider can scale the page. */
+  readonly canZoom: boolean
   /** Saved address offered for explicit restoration before any page has been requested. */
   readonly restoreTarget: BrowserTarget | undefined
   readonly addressFailure: BrowserAddressFailure | undefined
@@ -41,6 +46,8 @@ export interface BrowserControllerOptions {
   readonly actions: BoundActions<BrowserStore>
   readonly createPage: BrowserPageFactory
   readonly openTab: (url: string) => void
+  /** Zoom to restore on a remounted occurrence; omitted, the page starts at its own size. */
+  readonly initialZoom?: number | undefined
 }
 
 /** Owns input validation and page lifetime without inspecting the carrier type. */
@@ -55,10 +62,14 @@ export class BrowserController implements HostObservable<BrowserControllerState>
   private disposed = false
   private disposal: Promise<void> | undefined
   private readonly abort = (): void => { void this.dispose() }
+  private zoomFactor: number
+  private readonly initialZoom: number
 
   /** @param options - identity, persistence, page factory and source-tab navigation. */
   constructor(private readonly options: BrowserControllerOptions) {
     this.actions = options.actions
+    this.initialZoom = normalizeBrowserZoom(options.initialZoom ?? DEFAULT_BROWSER_ZOOM)
+    this.zoomFactor = this.initialZoom
     this.checkpoint = options.initial
     this.page = options.createPage({
       initial: options.initial,
@@ -76,6 +87,8 @@ export class BrowserController implements HostObservable<BrowserControllerState>
     })
     this.store = createSnapshotStore({ frame: this.page.frame.getSnapshot(),
       canAnnotate: this.page.frame.annotations !== undefined,
+      zoom: this.initialZoom,
+      canZoom: this.page.frame.zoom !== undefined,
       restoreTarget: currentBrowserTarget(this.checkpoint), addressFailure: undefined, addressRevision: 0 })
     this.unsubscribe = this.page.frame.subscribe(() => {
       if (this.disposed) return
@@ -83,6 +96,7 @@ export class BrowserController implements HostObservable<BrowserControllerState>
       const frame = this.page.frame.getSnapshot()
       const changed = frame.target?.url !== current.frame.target?.url
       this.store.set({ frame, canAnnotate: this.page.frame.annotations !== undefined,
+        canZoom: this.page.frame.zoom !== undefined, zoom: this.zoomFactor,
         restoreTarget: frame.target === undefined ? currentBrowserTarget(this.checkpoint) : undefined,
         addressFailure: changed ? undefined : current.addressFailure,
         addressRevision: current.addressRevision + Number(changed) })
@@ -177,6 +191,38 @@ export class BrowserController implements HostObservable<BrowserControllerState>
   }
 
   /**
+   * Apply one page zoom factor; providers without a zoom control ignore it.
+   * @param factor - requested scale, clamped to the supported ladder.
+   */
+  setZoom(factor: number): void {
+    const zoom = this.page.frame.zoom
+    if (zoom === undefined) return
+    const next = normalizeBrowserZoom(factor)
+    if (next === this.zoomFactor) return
+    this.zoomFactor = next
+    this.command(() => { zoom.setZoom(next) })
+    this.store.set({ ...this.store.getSnapshot(), zoom: next })
+  }
+
+  /**
+   * Move one step along the zoom ladder.
+   * @param direction - next larger or next smaller step.
+   */
+  stepZoom(direction: 'in' | 'out'): void {
+    this.setZoom(stepBrowserZoom(this.zoomFactor, direction))
+  }
+
+  /** @returns the remembered page zoom, so a remounted page starts at the same scale. */
+  get currentZoom(): number {
+    return this.zoomFactor
+  }
+
+  /** @returns the zoom applied at construction; a remounted occurrence reuses it. */
+  get startZoom(): number {
+    return this.initialZoom
+  }
+
+  /**
    * Redirect future checkpoint writes to a replacement Session binding.
    * @param actions - replacement persistence writer.
    */
@@ -221,6 +267,8 @@ export interface BrowserMountRequest {
   readonly initial: BrowserTabState | undefined
   readonly initialUrl: string | undefined
   readonly openTab: (url: string) => void
+  /** Zoom carried over from an earlier occurrence of the same tab. */
+  readonly initialZoom?: number | undefined
 }
 
 /** Plain Slot callbacks and a framework-bound state source, not a desktop protocol. */
@@ -250,6 +298,12 @@ export interface BrowserInjected {
   beginAnnotation(tabId: TabId): Promise<BrowserAnnotationCapture | undefined>
   /** @param tabId - tab whose capture in flight the user cancelled. */
   cancelAnnotation(tabId: TabId): void
+  /** @param tabId - owning tab. @param factor - requested page zoom. */
+  setZoom(tabId: TabId, factor: number): void
+  /** @param tabId - owning tab. @param direction - next larger or next smaller zoom step. */
+  stepZoom(tabId: TabId, direction: 'in' | 'out'): void
+  /** @param tabId - owning tab. @returns its remembered page zoom, for a remounted body. */
+  zoomOf(tabId: TabId): number | undefined
   /** Absent when the caller supplies no conversation-backed draft bridge, which disables screenshot attachments. */
   readonly annotationDrafts?: BrowserAnnotationDrafts
 }
@@ -281,7 +335,9 @@ export function createBrowserControllers(actions: BoundActions<BrowserStore>, cr
           held.signal.removeEventListener('abort', held.forget)
           void held.controller.dispose()
         }
-        const created = new BrowserController({ ...request, actions: currentActions, createPage })
+        const created = new BrowserController({
+          ...request, actions: currentActions, createPage, initialZoom: request.initialZoom,
+        })
         const forget = (): void => {
           controllers.delete(tabId)
           // Plugin unload also aborts occurrences; only layout removal deletes saved navigation.
@@ -313,6 +369,9 @@ export function createBrowserControllers(actions: BoundActions<BrowserStore>, cr
     goForward: (id) => { controller(id)?.goForward() },
     reload: (id) => { controller(id)?.reload() },
     setSandbox: (id, enabled) => { controller(id)?.setSandbox(enabled) },
+    setZoom: (id, factor) => { controller(id)?.setZoom(factor) },
+    stepZoom: (id, direction) => { controller(id)?.stepZoom(direction) },
+    zoomOf: id => controller(id)?.currentZoom,
     beginAnnotation: id => controller(id)?.beginAnnotation() ?? Promise.resolve(undefined),
     cancelAnnotation: (id) => { controller(id)?.cancelAnnotation() },
   }
