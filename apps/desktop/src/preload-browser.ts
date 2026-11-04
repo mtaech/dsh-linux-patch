@@ -1,6 +1,7 @@
 /** Lease-scoped browser operations and one main-process event subscription per window. */
 import { ipcRenderer } from 'electron'
-import type { DesktopBrowserBridge, DesktopBrowserLeaseId } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
+import type { DesktopBrowserAnnotationRequestId, DesktopBrowserBridge, DesktopBrowserElementCapture,
+  DesktopBrowserLeaseId } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import { DESKTOP_IPC } from './ipc.ts'
 
 /** @returns browser operations that expose neither IPC nor Electron objects. */
@@ -19,6 +20,13 @@ export function createDesktopBrowserBridge(): DesktopBrowserBridge {
   return {
     acquire: workspace => ipcRenderer.invoke(DESKTOP_IPC.browserAcquire, workspace) as ReturnType<DesktopBrowserBridge['acquire']>,
     release: lease => ipcRenderer.invoke(DESKTOP_IPC.browserRelease, lease) as Promise<void>,
+    annotations: {
+      capture: (lease: DesktopBrowserLeaseId,
+        requestId: DesktopBrowserAnnotationRequestId): Promise<DesktopBrowserElementCapture | undefined> =>
+        ipcRenderer.invoke(DESKTOP_IPC.browserAnnotateCapture, lease, requestId) as Promise<DesktopBrowserElementCapture | undefined>,
+      cancel: (lease: DesktopBrowserLeaseId, requestId: DesktopBrowserAnnotationRequestId): Promise<void> =>
+        ipcRenderer.invoke(DESKTOP_IPC.browserAnnotateCancel, lease, requestId) as Promise<void>,
+    },
     onOpenRequested(lease, listener) {
       let callbacks = listeners.get(lease)
       if (callbacks === undefined) { callbacks = new Set(); listeners.set(lease, callbacks) }

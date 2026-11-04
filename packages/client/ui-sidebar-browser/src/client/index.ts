@@ -2,6 +2,7 @@
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
@@ -20,7 +21,7 @@ import { en, ja, es, fr, de, ru, pt, zh } from './locales.ts'
 import { createBrowserStore } from './browser/store.ts'
 
 export type { BrowserBodyProps } from './view/BrowserBody.tsx'
-export type { BrowserControllerState, BrowserInjected, BrowserMountRequest } from './browser/BrowserController.ts'
+export type { BrowserControllerState, BrowserInjected, BrowserAnnotationDrafts, BrowserMountRequest } from './browser/BrowserController.ts'
 export type { BrowserFrame, BrowserFrameState, BrowserLoadError, BrowserSandboxControl } from './browser/BrowserFrame.ts'
 export type { BrowserPage, BrowserPageFactory, BrowserPageOptions } from './browser/BrowserPage.ts'
 export type { BrowserPresentation } from './view/BrowserPresentation.ts'
@@ -36,7 +37,7 @@ declare module '@deepseek-ai/dsh-client-ui-sidebar-right/client' {
   }
 }
 
-/** Required Browser services. */
+/** Required Browser services. Sessions stays an optional strict lookup: drafts degrade to text without it. */
 export const inject = ['slots', 'locale', 'sidebarRight', 'sidebarRightTabs']
 
 /** Register the Browser type, localized guide entry, body, and title. */
@@ -89,8 +90,21 @@ export function apply(ctx: Context): void {
         }
         const controller = createBrowserControllers(actions, factory(sessionId), tabId =>
           openTabs.getSnapshot().some(tab => tab.sessionId === sessionId && tab.tabId === tabId))
-        controllers.set(sessionId, controller)
-        return controller
+        const wrapped: BrowserInjected = {
+          ...controller,
+          annotationDrafts: {
+            create: (files) => {
+              const conversation = scope.get('conversation')
+              if (conversation === undefined) return undefined
+              // The Host stages uploads for ordinary Sessions only; a subagent continuation's images travel inline.
+              const ordinary = scope.get('sessions')?.binding(sessionId)?.session.getSnapshot().subagent === null
+              const drafts = conversation.createDrafts(sessionId, files, ordinary)
+              return { ids: drafts.map(draft => draft.id), release: () => { conversation.releaseDraftAttachments(drafts) } }
+            },
+          },
+        }
+        controllers.set(sessionId, wrapped)
+        return wrapped
       },
     }, BrowserBody)), 'ui-sidebar-browser.body')
   }

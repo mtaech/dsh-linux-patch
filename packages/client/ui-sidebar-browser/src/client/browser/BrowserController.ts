@@ -1,7 +1,9 @@
 /** Carrier-independent tab commands and renderer-facing state. */
 import { createSnapshotStore, type BoundActions, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { DraftAttachmentId } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
+import type { BrowserAnnotationCapture } from './BrowserAnnotation.ts'
 import type { BrowserFrameState } from './BrowserFrame.ts'
 import type { BrowserPage, BrowserPageFactory } from './BrowserPage.ts'
 import { currentBrowserTarget, type BrowserTabState } from './BrowserPersistence.ts'
@@ -11,10 +13,23 @@ import { parseBrowserAddress, type BrowserAddressFailure, type BrowserTarget } f
 /** Live tab state; navigation comes from its provider and draft validation stays local. */
 export interface BrowserControllerState {
   readonly frame: BrowserFrameState
+  /** Whether the provider exposes element capture, gating the annotation entry. */
+  readonly canAnnotate: boolean
   /** Saved address offered for explicit restoration before any page has been requested. */
   readonly restoreTarget: BrowserTarget | undefined
   readonly addressFailure: BrowserAddressFailure | undefined
   readonly addressRevision: number
+}
+
+/** Session-scoped composer draft attachments for annotation screenshots. */
+export interface BrowserAnnotationDrafts {
+  /**
+   * Register browser draft attachments for the Session behind this tab.
+   * @param files - screenshot files, named to match their annotation quotes.
+   * @returns the ordered ids with a release callback for the whole batch, or undefined when the
+   * conversation service is unavailable and the caller must fall back to text-only quotes.
+   */
+  create(files: readonly File[]): { readonly ids: readonly DraftAttachmentId[]; release(): void } | undefined
 }
 
 /** Construction inputs for one tab occurrence. */
@@ -35,6 +50,7 @@ export class BrowserController implements HostObservable<BrowserControllerState>
   private readonly unsubscribe: () => void
   private actions: BoundActions<BrowserStore>
   private checkpoint: BrowserTabState | undefined
+  private annotationAbort: AbortController | undefined
   private started = false
   private disposed = false
   private disposal: Promise<void> | undefined
@@ -59,13 +75,15 @@ export class BrowserController implements HostObservable<BrowserControllerState>
       },
     })
     this.store = createSnapshotStore({ frame: this.page.frame.getSnapshot(),
+      canAnnotate: this.page.frame.annotations !== undefined,
       restoreTarget: currentBrowserTarget(this.checkpoint), addressFailure: undefined, addressRevision: 0 })
     this.unsubscribe = this.page.frame.subscribe(() => {
       if (this.disposed) return
       const current = this.store.getSnapshot()
       const frame = this.page.frame.getSnapshot()
       const changed = frame.target?.url !== current.frame.target?.url
-      this.store.set({ frame, restoreTarget: frame.target === undefined ? currentBrowserTarget(this.checkpoint) : undefined,
+      this.store.set({ frame, canAnnotate: this.page.frame.annotations !== undefined,
+        restoreTarget: frame.target === undefined ? currentBrowserTarget(this.checkpoint) : undefined,
         addressFailure: changed ? undefined : current.addressFailure,
         addressRevision: current.addressRevision + Number(changed) })
     })
@@ -134,6 +152,31 @@ export class BrowserController implements HostObservable<BrowserControllerState>
   }
 
   /**
+   * Start one element capture against the current page. A concurrent capture is cancelled first,
+   * and disposal or tab teardown cancels the capture in flight.
+   * @returns the completed capture, or undefined when cancelled, superseded, or unsupported.
+   */
+  beginAnnotation(): Promise<BrowserAnnotationCapture | undefined> {
+    const annotations = this.page.frame.annotations
+    if (this.disposed || annotations === undefined) return Promise.resolve(undefined)
+    this.annotationAbort?.abort()
+    const abort = new AbortController()
+    this.annotationAbort = abort
+    const onDispose = (): void => { abort.abort() }
+    this.options.signal.addEventListener('abort', onDispose, { once: true })
+    return annotations.capture(abort.signal).finally(() => {
+      this.options.signal.removeEventListener('abort', onDispose)
+      if (this.annotationAbort === abort) this.annotationAbort = undefined
+    })
+  }
+
+  /** Cancel the capture in flight for this tab, if any. */
+  cancelAnnotation(): void {
+    this.annotationAbort?.abort()
+    this.annotationAbort = undefined
+  }
+
+  /**
    * Redirect future checkpoint writes to a replacement Session binding.
    * @param actions - replacement persistence writer.
    */
@@ -146,6 +189,7 @@ export class BrowserController implements HostObservable<BrowserControllerState>
   dispose(): Promise<void> {
     if (this.disposal !== undefined) return this.disposal
     this.disposed = true
+    this.cancelAnnotation()
     this.options.signal.removeEventListener('abort', this.abort)
     this.unsubscribe()
     this.disposal = this.page.frame.dispose()
@@ -202,6 +246,12 @@ export interface BrowserInjected {
   reload(tabId: TabId): void
   /** @param tabId - owning tab. @param enabled - provider's optional sandbox control. */
   setSandbox(tabId: TabId, enabled: boolean): void
+  /** @param tabId - owning tab. @returns the completed element capture, or undefined when cancelled or unsupported. */
+  beginAnnotation(tabId: TabId): Promise<BrowserAnnotationCapture | undefined>
+  /** @param tabId - tab whose capture in flight the user cancelled. */
+  cancelAnnotation(tabId: TabId): void
+  /** Absent when the caller supplies no conversation-backed draft bridge, which disables screenshot attachments. */
+  readonly annotationDrafts?: BrowserAnnotationDrafts
 }
 
 /**
@@ -263,5 +313,7 @@ export function createBrowserControllers(actions: BoundActions<BrowserStore>, cr
     goForward: (id) => { controller(id)?.goForward() },
     reload: (id) => { controller(id)?.reload() },
     setSandbox: (id, enabled) => { controller(id)?.setSandbox(enabled) },
+    beginAnnotation: id => controller(id)?.beginAnnotation() ?? Promise.resolve(undefined),
+    cancelAnnotation: (id) => { controller(id)?.cancelAnnotation() },
   }
 }

@@ -5,6 +5,7 @@ import type { ElectronWebviewPresentation, WebviewElement } from './ElectronWebv
 import { emptyBrowserFrame, type BrowserFrame, type BrowserFrameState, type BrowserLoadError } from '../browser/BrowserFrame.ts'
 import type { BrowserPageOptions } from '../browser/BrowserPage.ts'
 import { browserAddressCheckpoint, currentBrowserTarget } from '../browser/BrowserPersistence.ts'
+import { newAnnotationRequestId, toBrowserAnnotationCapture, type BrowserAnnotationCapture, type BrowserAnnotationControl } from '../browser/BrowserAnnotation.ts'
 import { parseBrowserAddress, type BrowserTarget } from '../browser/url.ts'
 
 interface NavigationEvent extends Event { readonly isMainFrame: boolean }
@@ -29,6 +30,7 @@ export class ElectronWebViewImpl implements BrowserFrame {
   private checkpoint: BrowserTarget | undefined
   private disposal: Promise<void> | undefined
   private attachment: AbortController | undefined
+  private captureLifetime: AbortController | undefined
   private readonly releases = new Set<Promise<void>>()
 
   /**
@@ -48,6 +50,48 @@ export class ElectronWebViewImpl implements BrowserFrame {
   getSnapshot = (): BrowserFrameState => this.store.getSnapshot()
   /** @param listener - state invalidation. @returns unsubscribe callback. */
   subscribe = (listener: () => void): (() => void) => this.store.subscribe(listener)
+
+  /** Element capture, offered only when the shell's bridge supports annotations. */
+  get annotations(): BrowserAnnotationControl | undefined {
+    return this.bridge.annotations === undefined ? undefined : {
+      capture: (signal: AbortSignal) => this.captureAnnotation(signal),
+    }
+  }
+
+  /**
+   * Capture the page element under the shell's picker.
+   * @param signal - caller abort; navigation, guest loss and disposal cancel an in-flight capture.
+   * @returns the carrier-neutral capture, or undefined when unsupported, cancelled, or before the lease exists.
+   */
+  private async captureAnnotation(signal: AbortSignal): Promise<BrowserAnnotationCapture | undefined> {
+    const annotations = this.bridge.annotations
+    const lease = this.lease
+    if (annotations === undefined || lease === undefined) return undefined
+    const requestId = newAnnotationRequestId()
+    const controller = new AbortController()
+    this.captureLifetime = controller
+    const combined = AbortSignal.any([signal, controller.signal, this.lifetime.signal])
+    const cancel = (): void => {
+      void annotations.cancel(lease, requestId)
+        .catch((error: unknown) => { console.error('Desktop browser annotation cancel failed', error) })
+    }
+    if (combined.aborted) { cancel(); return undefined }
+    combined.addEventListener('abort', cancel, { once: true })
+    try {
+      const payload = await annotations.capture(lease, requestId)
+      if (combined.aborted) return undefined
+      return payload === undefined ? undefined : toBrowserAnnotationCapture(payload)
+    } finally {
+      combined.removeEventListener('abort', cancel)
+      if (this.captureLifetime === controller) this.captureLifetime = undefined
+    }
+  }
+
+  /** Stop the in-flight element capture before the page or guest changes underneath it. */
+  private cancelAnnotationCapture(): void {
+    this.captureLifetime?.abort()
+    this.captureLifetime = undefined
+  }
 
   /** A physical mount may recreate a lost guest; ordinary Sidebar hiding never calls this. */
   attach(): void {
@@ -77,6 +121,7 @@ export class ElectronWebViewImpl implements BrowserFrame {
       this.reload()
       return
     }
+    this.cancelAnnotationCapture()
     this.revision++
     this.pending = target
     this.store.set({ ...current, target, address: 'requested', loading: true, error: undefined })
@@ -99,6 +144,7 @@ export class ElectronWebViewImpl implements BrowserFrame {
   reload(): void {
     const current = this.store.getSnapshot()
     if (this.lifetime.signal.aborted || current.target === undefined) return
+    this.cancelAnnotationCapture()
     if (!this.ready || current.error !== undefined) {
       this.revision++
       this.pending = current.target
@@ -111,6 +157,7 @@ export class ElectronWebViewImpl implements BrowserFrame {
   /** @returns after pending initialization and the owned guest have been released. */
   dispose(): Promise<void> {
     if (this.disposal !== undefined) return this.disposal
+    this.cancelAnnotationCapture()
     this.lifetime.abort()
     this.pending = undefined
     this.disposal = Promise.all([this.dropGuest(), this.initializing])
@@ -121,6 +168,7 @@ export class ElectronWebViewImpl implements BrowserFrame {
 
   private navigate(command: 'goBack' | 'goForward' | 'reload'): void {
     if (this.lifetime.signal.aborted || !this.ready || this.element === undefined) return
+    this.cancelAnnotationCapture()
     this.revision++
     this.pending = undefined
     this.store.set({ ...this.store.getSnapshot(), loading: true, error: undefined })
@@ -250,6 +298,7 @@ export class ElectronWebViewImpl implements BrowserFrame {
   }
 
   private dropGuest(): Promise<void> {
+    this.cancelAnnotationCapture()
     this.guestLifetime?.abort()
     this.guestLifetime = undefined
     this.presentation.clear()

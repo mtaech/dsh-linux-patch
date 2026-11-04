@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Browse HTTP(S) pages, including loopback services, inside independent right-Sidebar tabs. Web uses an iframe with application-managed history; Desktop uses Electron `<webview>` with native navigation history and retained pages. The package never injects Electron or Node access into visited content.
+Browse HTTP(S) pages, including loopback services, inside independent right-Sidebar tabs. Web uses an iframe with application-managed history; Desktop uses Electron `<webview>` with native navigation history and retained pages. The package never exposes Electron or Node access to visited content; Desktop element annotation runs a fixed, main-process-owned script in an isolated world, with no preload and no renderer-supplied code.
 
 ## Table of Contents
 
@@ -45,6 +45,8 @@ Client plugins can open a tab through `ctx.sidebarRight.openTab('browser', { par
 The `browser.new` command opens a separate Browser page in the focused dock pane, replacing a guide and retaining existing content pages. From the conversation or a floating content page, it uses the active dock pane. Desktop defaults to Cmd+T on macOS and Ctrl+T on Windows; Windows and macOS Web use the [shortcut service’s platform defaults](../shortcuts/README.md); Linux Web leaves the command unbound. The guide button uses a blue globe and displays the effective shortcut inline without a duplicate tooltip.
 
 The toolbar provides Back, Forward, Reload, Go, and Open in system browser. Web also offers a per-tab sandbox toggle; disabling it is temporary and displays an amber warning with neutral text. Desktop shows the observed page title. After a restart, Browser shows the saved title and URL; Restore or Reload opens that address only when requested.
+
+Desktop tabs can annotate page elements. The toolbar's annotate action starts a capture: click an element on the page, and press Esc or the action again to cancel. Cmd-click or Ctrl-click keeps collecting further elements for the same comment (Shift-click also adds), Backspace drops the last one, and Enter submits; a plain click submits the single pick. The selection then opens a comment editor rendered by DSH itself, never inside the visited page. Saved annotations collect in the tab's annotation strip, where each one can be deleted and all of them can be handed to the composer with Add to conversation: one numbered quote per annotation, plus one screenshot of the selected region as a draft attachment when the Session accepts image uploads. Each quote names every selected element with its selector, redundant selector candidates, ancestors, owning component when the page exposes one through its framework internals, and an HTML summary. The strip stays while the tab is mounted and clears when the tab closes.
 
 -----
 
@@ -107,6 +109,7 @@ The isolation policy deliberately gives up some browser compatibility:
 - Browsers conceal many iframe failures for security: DNS, TLS, mixed-content, CSP, and `X-Frame-Options` failures may emit `load` or no actionable event instead of `error`. The load-failure notice is best-effort.
 - Saved title and URL survive reloads and plugin unload while the tab remains in Sidebar's layout. Closing the tab removes its checkpoint. Restart restoration does not recover page memory, unsaved forms or Chromium's history stack.
 - Local files are rejected and remain owned by Document Preview.
+- Element annotation is Desktop-only; the annotate entry does not exist on Web, where pages render in an iframe this package cannot read. A capture screenshots the union of the selected element rectangles, falling back to the viewport when cropping is unavailable, and drops a screenshot over its byte budget while keeping the quote. One comment holds at most 8 elements. Annotations live only in the mounted tab: nothing persists, closing the tab discards the strip, and saved locators are not re-validated against a later page state, so stale relocation is deferred work.
 - Desktop shares process-local storage partitions by canonical workspace CWD; Sessions without a resolved Workspace are isolated separately. Cookies and Web storage do not survive application restart. Guest permissions, downloads and native popups are denied; approved HTTP(S) popup requests open Sidebar tabs. Host-address filtering is not a general private-network or DNS-rebinding firewall.
 
 <a id="dev-note"></a>

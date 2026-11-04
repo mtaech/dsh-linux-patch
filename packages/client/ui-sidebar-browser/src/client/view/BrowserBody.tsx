@@ -5,6 +5,8 @@ import {
   Button,
   IconChevronLeftOutlineRegular,
   IconChevronRightOutlineRegular,
+  IconCloseOutlineRegular,
+  IconEditOutlineRegular,
   IconLinkOutlineRegular,
   IconRefreshOutlineRegular, Tooltip,
   IconRightUpOutlineRegular,
@@ -12,6 +14,8 @@ import {
   ICON_REGULAR_STROKE,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
+import { formatBrowserAnnotation, nextAnnotationNumber } from '../browser/BrowserAnnotation.ts'
+import type { BrowserAnnotationCapture } from '../browser/BrowserAnnotation.ts'
 import type { BrowserInjected } from '../browser/BrowserController.ts'
 import { emptyBrowserFrame } from '../browser/BrowserFrame.ts'
 import { currentBrowserTarget } from '../browser/BrowserPersistence.ts'
@@ -19,6 +23,16 @@ import type { BrowserStore } from '../browser/store.ts'
 import css from './Browser.module.css'
 
 const EMPTY_FRAME = emptyBrowserFrame()
+
+/** Composer attachment handle returned by the annotation draft bridge. */
+type AnnotationDraftHandle = Exclude<ReturnType<NonNullable<BrowserInjected['annotationDrafts']>['create']>, undefined>
+
+/** One saved element annotation awaiting insertion into the composer. */
+interface AnnotationRecord {
+  readonly id: string
+  readonly capture: BrowserAnnotationCapture
+  readonly comment: string
+}
 
 function SandboxPolicyIcon({ sandboxed }: { readonly sandboxed: boolean }): ReactNode {
   return (
@@ -45,7 +59,8 @@ function useBrowserDraft(url: string | undefined, revision: number): readonly [s
 
 /** Render provider-neutral navigation state and optional controls. */
 export function BrowserBody(props: BrowserBodyProps): ReactNode {
-  const { mount, loadUrl, restore, goBack, goForward, reload, setSandbox, useBrowserState, useStore, useTabInfo, t } = props
+  const { mount, loadUrl, restore, goBack, goForward, reload, setSandbox, beginAnnotation, cancelAnnotation,
+    annotationDrafts, useBrowserState, useStore, useTabInfo, useInput, inputActions, t } = props
   const { tab } = useTabInfo()
   useEffect(() => tab.actions.bindCommands({ refresh: () => { reload(tab.id) } }), [tab.actions, tab.id, reload])
   const saved = useStore(state => state.byTab[tab.id])
@@ -58,6 +73,14 @@ export function BrowserBody(props: BrowserBodyProps): ReactNode {
   const restoreTarget = state === undefined ? currentBrowserTarget(initial.current) : state.restoreTarget
   const target = frame.target ?? restoreTarget
   const [draft, setDraft] = useBrowserDraft(target?.url ?? initialUrl.current, state?.addressRevision ?? 0)
+  const draftText = useInput(state => state.draft)
+  const inputPhase = useInput(state => state.phase)
+  const [annotating, setAnnotating] = useState(false)
+  const [editing, setEditing] = useState<{ readonly capture: BrowserAnnotationCapture; readonly comment: string }>()
+  const [records, setRecords] = useState<readonly AnnotationRecord[]>([])
+  const [notice, setNotice] = useState<string | undefined>()
+  const recordSeq = useRef(0)
+  const cancelSuppressed = useRef(false)
 
   useLayoutEffect(() => {
     const hide = mount({
@@ -74,7 +97,93 @@ export function BrowserBody(props: BrowserBodyProps): ReactNode {
   const sandboxed = frame.sandboxEnabled
   const failure = state?.addressFailure
   const error = frame.error
+  const canAnnotate = state?.canAnnotate === true && target !== undefined
   const submit = (event: FormEvent): void => { event.preventDefault(); loadUrl(tab.id, draft) }
+
+  useEffect(() => {
+    if (!annotating && editing === undefined) return
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      if (annotating) { cancelSuppressed.current = true; cancelAnnotation(tab.id); setAnnotating(false) }
+      else setEditing(undefined)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey) }
+  }, [annotating, editing, cancelAnnotation, tab.id])
+
+  const startCapture = (): void => {
+    if (annotating) {
+      cancelSuppressed.current = true
+      cancelAnnotation(tab.id)
+      setAnnotating(false)
+      return
+    }
+    setNotice(undefined)
+    setAnnotating(true)
+    void beginAnnotation(tab.id).then((capture) => {
+      setAnnotating(false)
+      if (capture === undefined) {
+        if (!cancelSuppressed.current) setNotice(t('annotation.error.notReady'))
+        cancelSuppressed.current = false
+        return
+      }
+      cancelSuppressed.current = false
+      setEditing({ capture, comment: '' })
+    })
+  }
+
+  const saveRecord = (): void => {
+    if (editing === undefined || editing.comment.trim() === '') return
+    recordSeq.current += 1
+    const record: AnnotationRecord = { id: `annotation-${String(recordSeq.current)}`, capture: editing.capture, comment: editing.comment }
+    setRecords(current => [...current, record])
+    setEditing(undefined)
+  }
+
+  const addRecords = (): void => {
+    if (records.length === 0) return
+    if (inputPhase !== 'plain') { setNotice(t('annotation.error.composerBusy')); return }
+    setNotice(undefined)
+    const base = nextAnnotationNumber(draftText)
+    const numbered = records.map((record, index) => ({ record, number: base + index }))
+    const files = numbered.flatMap(({ record, number }) => record.capture.screenshot === undefined ? []
+      : [new File([record.capture.screenshot.bytes as Uint8Array<ArrayBuffer>], `screenshot-${number}.png`, { type: 'image/png' })])
+    const drafts = annotationDrafts?.create(files)
+    if (drafts === undefined && files.length > 0) setNotice(t('annotation.error.draftsUnavailable'))
+    const withDrafts = drafts !== undefined
+    if (drafts !== undefined && !inputActions.addAttachments(drafts.ids)) {
+      drafts.release()
+      setNotice(t('annotation.error.composerBusy'))
+      return
+    }
+    const ids = drafts?.ids ?? []
+    const idByRecord = new Map<string, AnnotationDraftHandle['ids'][number]>()
+    let shotIndex = 0
+    let done = 0
+    for (const { record, number } of numbered) {
+      const { screenshot, ...textOnly } = record.capture
+      const hasShot = withDrafts && screenshot !== undefined
+      if (hasShot) {
+        const id = ids[shotIndex]
+        if (id !== undefined) idByRecord.set(record.id, id)
+        shotIndex += 1
+      }
+      const capture = hasShot ? record.capture : textOnly
+      if (!inputActions.insertQuote(formatBrowserAnnotation({ capture, comment: record.comment }, number))) break
+      done += 1
+    }
+    if (done < numbered.length) {
+      // Quotes that did not enter the composer leave their screenshots orphaned; detach and drop them.
+      for (const { record } of numbered.slice(done)) {
+        const id = idByRecord.get(record.id)
+        if (id !== undefined) inputActions.removeAttachment(id)
+      }
+      setRecords(numbered.slice(done).map(({ record }) => record))
+      setNotice(t('annotation.error.insertPartial', { done: String(done), total: String(numbered.length) }))
+      return
+    }
+    setRecords([])
+  }
 
   return (
     <div className={css.root}>
@@ -107,7 +216,17 @@ export function BrowserBody(props: BrowserBodyProps): ReactNode {
           aria-pressed={!sandboxed}
           onClick={() => { setSandbox(tab.id, !sandboxed) }}
         ><SandboxPolicyIcon sandboxed={sandboxed} /></button>}
+        {canAnnotate && <Tooltip label={t(annotating ? 'annotation.capture.cancel' : 'annotation.capture')} side="bottom" delayMs={500}>
+          <button
+            type="button"
+            className={[css.tool, annotating ? css.toolActive : ''].join(' ')}
+            aria-label={t(annotating ? 'annotation.capture.cancel' : 'annotation.capture')}
+            aria-pressed={annotating}
+            onClick={startCapture}
+          ><IconEditOutlineRegular /></button>
+        </Tooltip>}
       </form>
+      {annotating && <div className={css.annotationHint} role="status">{t('annotation.capture.hint')}</div>}
       {sandboxed === false && <div className={css.sandboxWarning} role="status">{t('sandbox.warning')}</div>}
       {error !== undefined && <div className={css.failure} role="status">{error.code !== undefined && error.description !== undefined
         ? t('load.failed.detail', { code: String(error.code), description: error.description })
@@ -126,7 +245,43 @@ export function BrowserBody(props: BrowserBodyProps): ReactNode {
         {restoreTarget === undefined && (target === undefined || frame.loading) && error === undefined && <div className={css.placeholder}>
           <div className={css.start}>{t(target === undefined ? 'start' : 'loading')}</div>
         </div>}
+        {editing !== undefined && <section className={css.annotationEditor} aria-label={t('annotation.editor.label')}>
+          <textarea
+            className={css.annotationInput}
+            value={editing.comment}
+            placeholder={t('annotation.editor.placeholder')}
+            aria-label={t('annotation.editor.label')}
+            onChange={(event) => { setEditing({ ...editing, comment: event.currentTarget.value }) }}
+          />
+          <div className={css.annotationActions}>
+            <Button variant="ghost" size="sm" onClick={() => { setEditing(undefined) }}>{t('annotation.editor.cancel')}</Button>
+            <Button variant="primary" size="sm" disabled={editing.comment.trim() === ''} onClick={saveRecord}>{t('annotation.editor.save')}</Button>
+          </div>
+        </section>}
       </div>
+      {(records.length > 0 || notice !== undefined) && <div className={css.annotationBar}>
+        {records.length > 0 && <span className={css.annotationCount}>{t('annotation.records.count', { count: String(records.length) })}</span>}
+        {records.length > 0 && <div className={css.annotationChips}>
+          {records.map((record) => {
+            const first = record.capture.targets[0]
+            const extra = record.capture.targets.length - 1
+            return <span key={record.id} className={css.annotationChip}>
+              <span className={css.annotationChipText}>
+                {first === undefined ? '' : `${first.snapshot.tagName} ${first.snapshot.text}`}
+                {extra > 0 ? ` +${String(extra)}` : ''}
+              </span>
+              <button type="button" className={css.annotationDelete} aria-label={t('annotation.records.delete')}
+                onClick={() => { setRecords(current => current.filter(entry => entry.id !== record.id)) }}
+              ><IconCloseOutlineRegular size={10} /></button>
+            </span>
+          })}
+        </div>}
+        {notice !== undefined && <span className={css.annotationNotice} role="status">{notice}</span>}
+        {records.length > 0 && <Button variant="outline" size="sm" disabled={inputPhase !== 'plain'}
+          title={inputPhase !== 'plain' ? t('annotation.error.composerBusy') : undefined}
+          onClick={addRecords}
+        >{t('annotation.records.add')}</Button>}
+      </div>}
       {unknown && <p className={css.limit}>{t('address.unknown')}</p>}
     </div>
   )

@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-在独立的右侧 Sidebar tab 中浏览 HTTP(S) 页面，包括 loopback 服务。Web 使用 iframe 和应用维护的 history；Desktop 使用 Electron `<webview>`、原生导航 history 和保活页面。本包不会向被访问内容注入 Electron 或 Node 能力。
+在独立的右侧 Sidebar tab 中浏览 HTTP(S) 页面，包括 loopback 服务。Web 使用 iframe 和应用维护的 history；Desktop 使用 Electron `<webview>`、原生导航 history 和保活页面。本包不会向被访问内容暴露 Electron 或 Node 能力；Desktop 的网页元素批注在 isolated world 中运行一段由主进程固定拥有的脚本，没有 preload，也没有渲染端提供的代码。
 
 ## 目录
 
@@ -45,6 +45,8 @@ Client 插件可以调用 `ctx.sidebarRight.openTab('browser', { params: { url }
 命令 `browser.new` 在焦点停靠分栏打开独立浏览器页，替换开始页并保留已有内容页。从聊天区或浮动内容页触发时，使用活动停靠分栏。桌面默认键在 macOS 上为 Cmd+T，在 Windows 上为 Ctrl+T；Windows 和 macOS Web 使用[快捷键服务的平台默认值](../shortcuts/README.zh.md)；Linux Web 默认不绑定此命令。开始页按钮使用蓝色地球图标，并在按钮内显示有效快捷键，不额外弹出重复提示。
 
 工具栏提供后退、前进、刷新、前往和在系统浏览器中打开。Web 还提供逐 tab sandbox 开关；关闭它是临时选择，并会显示灰字、琥珀色底的警告。Desktop 显示观察到的页面标题。重启后，Browser 展示保存的标题和 URL；只有点击恢复或刷新才打开该地址。
+
+Desktop tab 可以批注网页元素。工具栏的批注操作开始一次捕获：点击页面上的元素，按 Esc 或再次点击该操作即可取消。Cmd 点击或 Ctrl 点击会继续收集同一评论下的更多元素（Shift 点击同样追加），Backspace 撤销最后一个，Enter 提交；普通点击直接提交单个元素。选中的元素会打开一个由 DSH 自身渲染的评论编辑器，绝不会出现在被访问页面里。已保存的批注收进 tab 的批注条，可以单条删除，也可以用「添加到对话」把全部批注交给 composer：每条批注生成一个带编号的引用，并在 Session 接受图片上传时附上所选区域的一张截图。每条引用会列出所有选中元素的选择器、冗余候选选择器、祖先链、页面通过框架内部信息暴露的所属组件，以及 HTML 摘要。批注条在 tab 挂载期间保留，关闭 tab 即清空。
 
 -----
 
@@ -107,6 +109,7 @@ Desktop 主进程批准 guest 租约，并执行挂载、导航和权限策略�
 - 出于安全原因，浏览器会隐藏很多 iframe 失败：DNS、TLS、mixed-content、CSP 与 `X-Frame-Options` 失败可能触发 `load`，也可能不提供可操作 event，而不是触发 `error`。加载失败 notice 只能作为 best-effort 提示。
 - 只要 tab 仍在 Sidebar 布局中，保存的标题和 URL 就会跨刷新与插件卸载保留。关闭 tab 会删除其检查点。重启恢复不恢复页面内存、未保存的表单或 Chromium history 栈。
 - 本地文件会被拒绝，并继续由 Document Preview 负责。
+- 元素批注仅限 Desktop；Web 中页面渲染在本包无法读取的 iframe 里，因此不提供批注入口。捕获的截图裁剪所有选中元素矩形的并集，裁剪不可用时退回视口；截图超过字节上限时丢弃截图但保留引用。一条评论最多包含 8 个元素。批注只存在于挂载中的 tab：没有持久化，关闭 tab 即丢弃批注条，已保存的 locator 也不会对之后的页面状态重新校验，过期重定位属于延期工作。
 - Desktop 按规范化的工作区 CWD 共享进程内存储分区；没有解析到 Workspace 的 Session 单独隔离。Cookie 与 Web storage 不跨应用重启保留。guest 权限、下载与原生 popup 均被拒绝；通过检查的 HTTP(S) popup 请求会打开 Sidebar tab。Host 地址过滤不是通用私网或 DNS-rebinding 防火墙。
 
 <a id="dev-note"></a>

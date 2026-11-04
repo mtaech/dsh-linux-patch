@@ -68,6 +68,25 @@ export interface IConversation {
    * @returns completion of the page pull.
    */
   loadOlder(): Promise<void>
+  /**
+   * Create runtime-only draft attachments for the caller scope's session.
+   * Files whose browser MIME is an accepted image type become image drafts
+   * with an object URL preview; every other file becomes a file draft. A file
+   * draft's background upload starts immediately, and so does an image
+   * draft's when `uploadImages` is set. Release each returned descriptor with
+   * releaseDraftAttachments.
+   * @param sessionId - target Agent-scope identity.
+   * @param files - browser files to register.
+   * @param uploadImages - whether the Session accepts image uploads; a subagent continuation does not.
+   * @returns ordered draft descriptors.
+   */
+  createDrafts(sessionId: SessionId, files: readonly File[], uploadImages: boolean): readonly ComposerAttachment[]
+  /**
+   * Release browser-owned draft attachments, revoking object URLs and
+   * discarding any in-flight uploads.
+   * @param attachments - descriptors to release.
+   */
+  releaseDraftAttachments(attachments: readonly ComposerAttachment[]): void
 }
 
 /** Create one browser-only image draft descriptor; only its id enters input state. */

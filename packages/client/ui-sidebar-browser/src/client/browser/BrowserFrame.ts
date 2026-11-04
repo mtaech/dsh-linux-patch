@@ -1,5 +1,6 @@
 /** Carrier-neutral page navigation and observable state. */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
+import type { BrowserAnnotationControl } from './BrowserAnnotation.ts'
 import type { BrowserTarget } from './url.ts'
 
 /** A loading failure, optionally carrying the underlying browser's diagnostic. */
@@ -29,6 +30,8 @@ export interface BrowserSandboxControl {
 /** Navigation owns page lifetime; mounting and hiding belong to BrowserPresentation. */
 export interface BrowserFrame extends HostObservable<BrowserFrameState> {
   readonly sandbox?: BrowserSandboxControl
+  /** Element capture; only carriers whose capturer can read their own page implement it, so absence hides the annotation entry. */
+  readonly annotations?: BrowserAnnotationControl | undefined
   /** @param target - validated HTTP(S) address; loading failures are published in state. */
   loadUrl(target: BrowserTarget): void
   /** Move backward when the provider reports an available entry. */

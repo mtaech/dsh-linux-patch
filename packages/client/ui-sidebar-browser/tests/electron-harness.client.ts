@@ -1,14 +1,18 @@
 /** Native webview events controlled by each test; presentation and navigation stay real. */
 import { vi } from 'vitest'
-import type { DesktopBrowserBridge, DesktopBrowserLeaseId, DesktopBrowserReservation } from '../src/types.ts'
+import type { DesktopBrowserAnnotationBridge, DesktopBrowserBridge, DesktopBrowserLeaseId, DesktopBrowserReservation } from '../src/types.ts'
 import type { BrowserTabState } from '../src/client/browser/BrowserPersistence.ts'
 import { createElectronPage } from '../src/client/electron/pages.ts'
 import { ElectronWebviewPresentation } from '../src/client/electron/ElectronWebviewPresentation.ts'
 
 let sequence = 0
 
-/** @returns one isolated, explicitly mounted page with native operations replaced by spies. */
-export function electronFixture(initial?: BrowserTabState) {
+/**
+ * @param initial - saved tab state.
+ * @param annotations - optional annotation bridge offered by the fake main process.
+ * @returns one isolated, explicitly mounted page with native operations replaced by spies.
+ */
+export function electronFixture(initial?: BrowserTabState, annotations?: DesktopBrowserAnnotationBridge) {
   const opens = new Set<(url: string) => void>()
   const reservation: DesktopBrowserReservation = { lease: `lease-${++sequence}` as DesktopBrowserLeaseId, partition: 'partition' }
   const bridge = {
@@ -18,6 +22,8 @@ export function electronFixture(initial?: BrowserTabState) {
       opens.add(listener)
       return () => { opens.delete(listener) }
     }),
+    // Conditional spread keeps the absent annotation bridge absent under exactOptionalPropertyTypes.
+    ...(annotations === undefined ? {} : { annotations }),
   } satisfies DesktopBrowserBridge
   const workspace = vi.fn(async (_signal: AbortSignal) => 'cwd:/workspace')
   const persist = vi.fn()

@@ -15,6 +15,7 @@ import { browserAddressCheckpoint, type BrowserTabState } from '../src/client/br
 import type { BrowserPageFactory, BrowserPageOptions } from '../src/client/browser/BrowserPage.ts'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { emptyBrowserFrame, type BrowserFrameState } from '../src/client/browser/BrowserFrame.ts'
+import type { InputState } from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 const SESSION = 'session' as SessionId
 const TAB = 'tab' as TabId
@@ -22,6 +23,24 @@ const messages: Readonly<Record<string, string>> = zh
 const lifetimes = new Set<AbortController>()
 const controllers: BrowserInjected[] = []
 let mountSequence = 0
+
+function baseInputState(): InputState {
+  return { draft: '', attachmentIds: [], draftRev: 0, phase: 'plain', occurrences: [], queue: [] as InputState['queue'] }
+}
+
+function stubInputActions() {
+  return {
+    insertQuote: vi.fn(() => true),
+    captureInsertion: vi.fn(() => { throw new Error('annotation spec does not capture insertion') }),
+    insertText: vi.fn(() => true),
+    setDraft: vi.fn(),
+    persistDraft: vi.fn(),
+    addAttachments: vi.fn(() => true),
+    removeAttachment: vi.fn(),
+    pruneAttachments: vi.fn(),
+    submit: vi.fn(),
+  }
+}
 
 function hookOf<T>(store: { subscribe(listener: () => void): () => void; getSnapshot(): T }) {
   return function useSelector<S>(select: (state: T) => S): S {
@@ -47,7 +66,9 @@ function mountBrowser(navigation?: { readonly url?: string },
   controllers.push(injected)
   const { keyedHooks, ...commands } = injected
   const tabActions = { bindCommands: vi.fn<ReturnType<BrowserBodyProps['useTabInfo']>['tab']['actions']['bindCommands']>(() => vi.fn()), openResource: vi.fn(), openTab: vi.fn(), close: vi.fn() }
-  const props: Pick<BrowserBodyProps, 'sessionId' | 'useTabInfo' | 'useStore' | 'actions' | 't' | 'useBrowserState'>
+  const inputStore = createSnapshotStore<InputState>(baseInputState())
+  const inputActions = stubInputActions()
+  const props: Pick<BrowserBodyProps, 'sessionId' | 'useTabInfo' | 'useStore' | 'actions' | 't' | 'useBrowserState' | 'useInput' | 'inputActions'>
     & Omit<BrowserInjected, 'keyedHooks'> = {
       sessionId: SESSION,
       useTabInfo: () => ({
@@ -61,6 +82,8 @@ function mountBrowser(navigation?: { readonly url?: string },
       }),
       useStore: hookOf(store),
       actions: store.actions,
+      useInput: hookOf(inputStore),
+      inputActions,
       t: (key, params) => {
         const template = messages[key] ?? key
         return params === undefined ? template : template.replace(/\{(\w+)\}/g, (_match, name: string) => String(params[name]))
@@ -73,7 +96,7 @@ function mountBrowser(navigation?: { readonly url?: string },
     }
   const renderBody = () => render(<BrowserBody {...props as BrowserBodyProps} />)
   return {
-    view: renderBody(), remount: renderBody, store, lifetime, injected, tabActions,
+    view: renderBody(), remount: renderBody, store, lifetime, injected, tabActions, inputStore, inputActions,
   }
 }
 

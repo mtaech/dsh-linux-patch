@@ -63,6 +63,20 @@ export class DesktopBrowserGuests {
   }
 
   /**
+   * Live guest attached to one of this window's leases.
+   * @param owner - authenticated IPC sender.
+   * @param id - lease received over IPC.
+   * @returns the guest only when the lease belongs to this window and its guest is alive.
+   */
+  guest(owner: WebContents, id: unknown): WebContents | undefined {
+    if (typeof id !== 'string') return undefined
+    const lease = this.leases.get(id as DesktopBrowserLeaseId)
+    if (lease === undefined || lease.owner !== owner) return undefined
+    const guest = lease.guest
+    return guest !== undefined && !guest.isDestroyed() ? guest : undefined
+  }
+
+  /**
    * Install attachment checks before the application document can create a webview.
    * @param window - primary application window.
    * @param attachInput - attaches native input after guest ownership is verified and returns its disposer.

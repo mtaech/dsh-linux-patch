@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for 2026-11-04-web-element-annotations.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-11-04-web-element-annotations.md
+/agent-note-web-element-annotations-in-sidebar-browser:
+  en: 1c844e25d01b18ef
+  zh: 2ef4b239d669007b
+/agent-note-web-element-annotations-in-sidebar-browser/problem:
+  en: 4aa52842b2b39794
+  zh: 698e2c3139ca2a0e
+/agent-note-web-element-annotations-in-sidebar-browser/decision:
+  en: cf28b8f0a3642448
+  zh: 117b294b572f9e29
+/agent-note-web-element-annotations-in-sidebar-browser/alternatives-considered:
+  en: 58efd3d2debb76cc
+  zh: b2b1519edd0adad5
+/agent-note-web-element-annotations-in-sidebar-browser/consequences:
+  en: 0c1e4c2fbd0acc72
+  zh: dc639dd6c0b0bbf8
+/agent-note-web-element-annotations-in-sidebar-browser/testing:
+  en: 0970a85ff99743f3
+  zh: 0a0c8d9c5444693e
+/agent-note-web-element-annotations-in-sidebar-browser/follow-up-t3code-comparison-same-day:
+  en: 615b274b7e43e7c2
+  zh: 0193dc460803dd6f
