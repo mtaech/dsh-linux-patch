@@ -34,6 +34,7 @@ export function desktopReleasesRoot(env: NodeJS.ProcessEnv): string {
  */
 export function resolveDesktopRetentionRunner(env: NodeJS.ProcessEnv): string {
   const target = resolveDesktopBuildTarget(env)
+  if (target === 'linux-x64') throw new Error('desktop retention: no CI job retains Linux packages')
   const routes = desktopPublishRunnersSchema.parse(JSON.parse(required(env, 'DESKTOP_PUBLISH_RUNNERS')))
   const route = routes[required(env, 'RUNNER_NAME')]
   if (!route || !route.target.includes(target)

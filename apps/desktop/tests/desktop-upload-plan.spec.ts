@@ -318,10 +318,10 @@ describe('desktop upload plan', () => {
         blockMapSize: 128,
       }],
     })
-    const latest = await createDesktopUploadPlan('linux-x64', await fixture('linux-x64', '1.2.3', 'test', 'latest'))
-    expect(latest.artifacts.map(artifact => artifact.filename)).toEqual([
+    const stable = await createDesktopUploadPlan('linux-x64', await fixture('linux-x64', '1.2.3', 'test', 'stable'))
+    expect(stable.artifacts.map(artifact => artifact.filename)).toEqual([
       'deepseek-harness-1.2.3-linux-x86_64.AppImage',
-      'latest-linux.yml',
+      'stable-linux.yml',
     ])
   })
 

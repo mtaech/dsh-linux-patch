@@ -212,12 +212,18 @@ export class BrowserController implements HostObservable<BrowserControllerState>
     this.setZoom(stepBrowserZoom(this.zoomFactor, direction))
   }
 
-  /** @returns the remembered page zoom, so a remounted page starts at the same scale. */
+  /**
+   * Remembered page zoom for the current occurrence.
+   * @returns the remembered page zoom, so a remounted page starts at the same scale.
+   */
   get currentZoom(): number {
     return this.zoomFactor
   }
 
-  /** @returns the zoom applied at construction; a remounted occurrence reuses it. */
+  /**
+   * Zoom the occurrence started with.
+   * @returns the zoom applied at construction; a remounted occurrence reuses it.
+   */
   get startZoom(): number {
     return this.initialZoom
   }
