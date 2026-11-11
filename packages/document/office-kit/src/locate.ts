@@ -1,7 +1,8 @@
-/** Locate LibreOffice Kit and its engine packages from the consumer's Kit installation without module hooks. */
-import { lstatSync } from 'node:fs'
+/**
+ * Locate LibreOffice Kit and its engine packages from the consumer's Kit installation without module hooks.
+ * Engine packages never ship for Linux, so a missing native engine reports MODULE_NOT_FOUND and Kit falls back to WASM.
+ */
 import { createRequire } from 'node:module'
-import { join } from 'node:path'
 
 /**
  * Locate an engine package manifest for Kit.
@@ -48,25 +49,17 @@ export function resolveKitModule(lookupKitEntry: KitEntryLookup): KitModuleResol
  * @returns A callback for Kit's `resolveEnginePackage` option. Native paths map the first ASAR segment to its unpacked copy;
  * WASM and paths outside archives stay unchanged. Kit validates the returned manifest and required engine assets.
  * @throws Node's error if `kitEntry` cannot be used by `createRequire`.
- * On invocation, the callback preserves Node errors for absent packages and other resolution failures.
- * An installed package with an unresolvable manifest throws an incomplete-installation Error with the Node error as its cause,
- * preventing engine fallback. Filesystem inspection errors propagate unchanged.
+ * On invocation, the callback preserves Node errors for absent packages and other resolution failures, so Kit's
+ * MODULE_NOT_FOUND handling selects the WASM fallback. Filesystem inspection errors propagate unchanged.
  */
 export function createEnginePackageResolver(kitEntry: string | URL): EnginePackageResolver {
   const fromKit = createRequire(kitEntry)
   return (name) => {
-    let manifest: string
-    try {
-      manifest = fromKit.resolve(`${name}/package.json`)
-    } catch (error) {
-      if (error instanceof Error && 'code' in error && error.code === 'MODULE_NOT_FOUND') {
-        const installed = (fromKit.resolve.paths(name) ?? []).some(directory =>
-          lstatSync(join(directory, name), { throwIfNoEntry: false }) !== undefined,
-        )
-        if (installed) throw new Error(`Installed LibreOfficeKit package is incomplete: ${name}. Reinstall the package.`, { cause: error })
-      }
-      throw error
-    }
+    // A MODULE_NOT_FOUND is honest absence: no engine package is ever published or installed for
+    // Linux, and the previous installed-but-incomplete lstat probe misfired inside the packaged
+    // Linux AppImage, where candidate paths cross app.asar. Kit's MODULE_NOT_FOUND handling
+    // selects the WASM fallback.
+    const manifest = fromKit.resolve(`${name}/package.json`)
     return name === '@deepseek-ai/libreoffice-kit-wasm' ? manifest : unpackedPath(manifest)
   }
 }

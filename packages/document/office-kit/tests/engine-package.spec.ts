@@ -1,5 +1,5 @@
-/** Engine resolution distinguishes missing installations from incomplete ones and preserves ASAR asset paths. */
-import { lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+/** Engine resolution maps native manifests to ASAR-unpacked physical paths; missing engines stay MODULE_NOT_FOUND. */
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { tmpdir } from 'node:os'
@@ -10,10 +10,6 @@ import { createEnginePackageResolver } from '../src/locate.ts'
 vi.mock('node:module', async (original) => {
   const actual = await original<typeof import('node:module')>()
   return { createRequire: vi.fn(actual.createRequire) }
-})
-vi.mock('node:fs', async (original) => {
-  const actual = await original<typeof import('node:fs')>()
-  return { ...actual, lstatSync: vi.fn(actual.lstatSync) }
 })
 const { createRequire: nodeCreateRequire } = await vi.importActual<typeof import('node:module')>('node:module')
 
@@ -79,7 +75,7 @@ it('uses physical native paths and preserves the WASM logical path in an archive
 })
 
 it.each(['missing manifest', 'dangling symlink', 'absent'] as const)(
-  'distinguishes an engine package with %s on the kit resolution path', (state) => {
+  'keeps the Node missing error for an engine package with %s on the kit resolution path', (state) => {
     const fixture = engineTree()
     if (state === 'missing manifest') mkdirSync(fixture.directory, { recursive: true })
     if (state === 'dangling symlink') {
@@ -89,16 +85,8 @@ it.each(['missing manifest', 'dangling symlink', 'absent'] as const)(
     const error = thrownBy(() => fixture.resolveEnginePackage(fixture.name))
     const nodeError: unknown = fixture.resolve.mock.results[0]?.value
     expect(nodeError).toMatchObject({ code: 'MODULE_NOT_FOUND' })
-    if (state === 'absent') {
-      expect(error).toBe(nodeError)
-    } else {
-      expect(error).toBeInstanceOf(Error)
-      expect(error).not.toHaveProperty('code', 'MODULE_NOT_FOUND')
-      expect(error).toHaveProperty('cause')
-      if (!(error instanceof Error)) throw error
-      expect(error.cause).toBe(nodeError)
-      expect(error.message).toContain(fixture.name)
-    }
+    // Every absent state reaches Kit as the original MODULE_NOT_FOUND, which selects the WASM fallback.
+    expect(error).toBe(nodeError)
   },
 )
 
@@ -109,7 +97,6 @@ it('keeps a Node resolution error other than MODULE_NOT_FOUND unchanged', () => 
   const error = thrownBy(() => fixture.resolveEnginePackage(fixture.name))
   expect(error).toMatchObject({ code: 'ERR_INVALID_PACKAGE_CONFIG' })
   expect(error).toBe(fixture.resolve.mock.results[0]?.value)
-  expect(lstatSync).not.toHaveBeenCalled()
 })
 
 it('preserves Node missing errors when the name has no package search paths', () => {
@@ -117,18 +104,4 @@ it('preserves Node missing errors when the name has no package search paths', ()
   const error = thrownBy(() => fixture.resolveEnginePackage('node:fs'))
   expect(error).toMatchObject({ code: 'MODULE_NOT_FOUND' })
   expect(error).toBe(fixture.resolve.mock.results[0]?.value)
-  expect(lstatSync).not.toHaveBeenCalled()
-})
-
-it('propagates permission errors while checking the kit installation', () => {
-  const fixture = engineTree()
-  const denied = Object.assign(new Error('Cannot inspect engine installation'), { code: 'EACCES' })
-  const paths = fixture.kit.resolve.paths(fixture.name)
-  if (!paths?.[0]) throw new Error('Fixture package must have Node resolution paths')
-  const firstDirectory = join(paths[0], fixture.name)
-  vi.mocked(lstatSync).mockImplementationOnce((path) => {
-    expect(path).toBe(firstDirectory)
-    throw denied
-  })
-  expect(thrownBy(() => fixture.resolveEnginePackage(fixture.name))).toBe(denied)
 })
