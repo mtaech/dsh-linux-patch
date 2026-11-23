@@ -80,7 +80,7 @@ describe('raster dispatch', () => {
         height: 4,
         bytes: data.byteLength,
       },
-    }, { width: 4, height: 4, maxBytes: 4096 }, false)
+    }, { width: 4, height: 4, maxImageBytes: 4096, imageTargetBytes: 4096 }, false, { minShrinkFactor: 1.1, byteHeadroom: 0.95 }, undefined)
     expect([...requested.data]).toEqual([...data].reverse())
   })
 

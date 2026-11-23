@@ -110,8 +110,9 @@ describe('raster worker', () => {
           height: 32,
           bytes: data.byteLength,
         },
-        target: { width: 8, height: 8, maxBytes: 64 * 1024 },
+        target: { width: 8, height: 8, maxImageBytes: 64 * 1024, imageTargetBytes: 64 * 1024 },
         hasAlpha: true,
+        policy: { minShrinkFactor: 1.1, byteHeadroom: 0.95 },
       }, data),
     ])
     expect(replies[0]).toMatchObject({ id: 4, ok: true, result: { op: 'createRequestImage', width: 8, height: 8 } })

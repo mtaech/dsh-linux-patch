@@ -23,7 +23,8 @@ const detected: DetectedImage = {
   space: 'srgb',
   hasAlpha: false,
 }
-const target = { width: 8, height: 8, maxBytes: 1024 }
+const target = { width: 8, height: 8, maxImageBytes: 1024, imageTargetBytes: 1024 }
+const policy = { minShrinkFactor: 1.1, byteHeadroom: 0.95 }
 const attachment = {
   data: new Uint8Array([5, 6, 7]),
   ref: {
@@ -61,7 +62,7 @@ describe('raster worker client', () => {
     const normalized = await client.normalizeImage(image, detected, { maxPixels: 16, maxDimension: 16, maxBytes: 1024 })
     expect([...normalized.data]).toEqual([...image].reverse())
     expect(normalized).toMatchObject({ mediaType: 'image/png', width: 2, height: 3 })
-    const requested = await client.createRequestImage(attachment, target, false)
+    const requested = await client.createRequestImage(attachment, target, false, policy, undefined)
     expect([...requested.data]).toEqual([...attachment.data].reverse())
     expect(requested).toMatchObject({ mediaType: 'image/png', width: 2, height: 3 })
   })
@@ -110,7 +111,7 @@ describe('raster worker client', () => {
       .rejects.toThrow('attachment raster worker returned an unexpected result')
     await expect(worker('probe-reply').normalizeImage(image, detected, { maxPixels: 16, maxDimension: 16, maxBytes: 1024 }))
       .rejects.toThrow('attachment raster worker returned an unexpected result')
-    await expect(worker('probe-reply').createRequestImage(attachment, target, false))
+    await expect(worker('probe-reply').createRequestImage(attachment, target, false, policy, undefined))
       .rejects.toThrow('attachment raster worker returned an unexpected result')
   })
 
