@@ -6,6 +6,7 @@ import { isAttachmentError } from '@deepseek-ai/dsh-attachment'
 import type { ImageRequestTarget, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
 import { RasterFrameDecoder, encodeRasterFrame } from './raster-protocol.ts'
 import type { RasterRequestJson, RasterResult } from './raster-protocol.ts'
+import type { RequestImageResizePolicy } from './request-image.ts'
 import type {
   DecodedImageLimits,
   DetectedImage,
@@ -112,11 +113,15 @@ export class RasterWorker implements RasterRunner {
     attachment: StoredImageAttachment,
     target: ImageRequestTarget,
     hasAlpha: boolean,
+    policy: RequestImageResizePolicy,
+    signal: AbortSignal | undefined,
   ): Promise<EncodedRequestImage> {
+    signal?.throwIfAborted()
     const { result, binary } = await this.request(
-      { op: 'createRequestImage', ref: attachment.ref, target, hasAlpha },
+      { op: 'createRequestImage', ref: attachment.ref, target, hasAlpha, policy },
       attachment.data,
     )
+    signal?.throwIfAborted()
     if (result.op !== 'createRequestImage') throw new Error('attachment raster worker returned an unexpected result')
     return { data: binary, mediaType: result.mediaType, width: result.width, height: result.height }
   }

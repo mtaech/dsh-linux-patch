@@ -1,8 +1,9 @@
 /** Sharp-backed raster operations: the single place that loads Sharp. @module @deepseek-ai/dsh-attachment-local/raster-operations */
 
 import type { Sharp } from 'sharp'
-import { AttachmentError, requestImageDimensions } from '@deepseek-ai/dsh-attachment'
+import { AttachmentError, longEdgeDimensions, requestImageDimensions } from '@deepseek-ai/dsh-attachment'
 import type { ImageMediaType, ImageRequestTarget, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
+import type { RequestImageResizePolicy } from './request-image.ts'
 import { encodeFirstWithinLimit, encodingLadder, isExhaustedEncoding } from './encoding.ts'
 import { requireSharp } from './sharp.ts'
 
@@ -68,6 +69,8 @@ export interface RasterRunner {
     attachment: StoredImageAttachment,
     target: ImageRequestTarget,
     hasAlpha: boolean,
+    policy: RequestImageResizePolicy,
+    signal: AbortSignal | undefined,
   ): Promise<EncodedRequestImage>
 }
 
@@ -261,7 +264,7 @@ function sourcePipeline(attachment: StoredImageAttachment): Sharp {
 }
 
 /** Resize by the source long edge only, so the encoder derives the short edge as the route predicts. */
-function pipeline(attachment: StoredImageAttachment, target: ImageRequestTarget): Sharp {
+function pipeline(attachment: StoredImageAttachment, target: Pick<ImageRequestTarget, 'width' | 'height'>): Sharp {
   const byWidth = attachment.ref.width >= attachment.ref.height
   return sourcePipeline(attachment)
     .resize({ ...byWidth ? { width: target.width } : { height: target.height }, withoutEnlargement: true })
@@ -270,18 +273,22 @@ function pipeline(attachment: StoredImageAttachment, target: ImageRequestTarget)
 /**
  * Transform one stored normalized attachment into the encoded model-request form.
  * @param attachment - durable normalized attachment bytes and reference.
- * @param target - route-chosen request dimensions and byte target.
+ * @param target - route-chosen dimensions, hard byte limit, and preferred byte target.
  * @param hasAlpha - decoded source alpha fact selecting the ladder codec.
- * @returns encoded request bytes at the first ladder quality within the byte target.
+ * @param policy - resolved size-reduction controls applied when an encoding exceeds the hard limit.
+ * @param signal - optional cancellation checked between shrink iterations.
+ * @returns encoded request bytes within the hard byte limit.
  */
 export async function createRequestImage(
   attachment: StoredImageAttachment,
   target: ImageRequestTarget,
   hasAlpha: boolean,
+  policy: RequestImageResizePolicy,
+  signal: AbortSignal | undefined,
 ): Promise<EncodedRequestImage> {
   if (target.width >= attachment.ref.width
     && target.height >= attachment.ref.height
-    && attachment.data.byteLength <= target.maxBytes) {
+    && attachment.data.byteLength <= target.imageTargetBytes) {
     return {
       data: attachment.data,
       mediaType: attachment.ref.mediaType,
@@ -289,9 +296,29 @@ export async function createRequestImage(
       height: attachment.ref.height,
     }
   }
-  const encodedVersion = await encodeFirstWithinLimit(
-    encodingLadder(pipeline(attachment, target), hasAlpha),
-    target.maxBytes,
-  )
-  return isExhaustedEncoding(encodedVersion) ? encodedVersion.smallest : encodedVersion
+  const source = attachment.ref
+  let dimensions = longEdgeDimensions(source.width, source.height, source.width >= source.height ? target.width : target.height)
+  if (dimensions.width > target.width || dimensions.height > target.height) {
+    dimensions = requestImageDimensions(source.width, source.height, Infinity, target.width, target.height)
+  }
+  for (;;) {
+    signal?.throwIfAborted()
+    const encoded = await encodeFirstWithinLimit(
+      encodingLadder(pipeline(attachment, dimensions), hasAlpha),
+      target.imageTargetBytes,
+    )
+    signal?.throwIfAborted()
+    const candidate = isExhaustedEncoding(encoded) ? encoded.smallest : encoded
+    if (candidate.data.byteLength <= target.maxImageBytes) return candidate
+    const longEdge = Math.max(candidate.width, candidate.height)
+    if (longEdge === 1) {
+      throw new AttachmentError(
+        `Image still exceeds the ${target.maxImageBytes}-byte request limit at 1x1 pixels. Increase the image byte limit.`,
+        'IMAGE_REQUEST_TOO_LARGE',
+      )
+    }
+    const divisor = Math.max(policy.minShrinkFactor, Math.sqrt(candidate.data.byteLength / (policy.byteHeadroom * target.maxImageBytes)))
+    const nextEdge = Math.max(1, Math.min(longEdge - 1, Math.floor(longEdge / divisor)))
+    dimensions = longEdgeDimensions(attachment.ref.width, attachment.ref.height, nextEdge)
+  }
 }

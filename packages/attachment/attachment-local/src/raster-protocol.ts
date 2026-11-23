@@ -3,6 +3,7 @@
 
 import { Buffer } from 'node:buffer'
 import type { AttachmentErrorCode, ImageAttachmentRef, ImageMediaType, ImageRequestTarget } from '@deepseek-ai/dsh-attachment'
+import type { RequestImageResizePolicy } from './request-image.ts'
 import type { DecodedImageLimits, DetectedImage, NormalizationPolicy } from './raster-operations.ts'
 
 /** Largest accepted frame section; a raster request carries at most one admitted image. */
@@ -13,7 +14,7 @@ export type RasterRequestJson =
   | { op: 'probeImage' }
   | { op: 'detectImage'; limits?: DecodedImageLimits }
   | { op: 'normalizeImage'; detected: DetectedImage; policy: NormalizationPolicy }
-  | { op: 'createRequestImage'; ref: ImageAttachmentRef; target: ImageRequestTarget; hasAlpha: boolean }
+  | { op: 'createRequestImage'; ref: ImageAttachmentRef; target: ImageRequestTarget; hasAlpha: boolean; policy: RequestImageResizePolicy }
 
 /** One raster operation request: JSON facts, its request id, and the submitted image bytes. */
 export type RasterRequest = RasterRequestJson & { id: number; data: Uint8Array }

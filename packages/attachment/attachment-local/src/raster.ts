@@ -160,14 +160,18 @@ export async function normalizeImage(
 /**
  * Transform one stored normalized attachment into the encoded model-request form.
  * @param attachment - durable normalized attachment bytes and reference.
- * @param target - route-chosen request dimensions and byte target.
+ * @param target - route-chosen request dimensions, hard byte limit, and preferred byte target.
  * @param hasAlpha - decoded source alpha fact selecting the ladder codec.
- * @returns encoded request bytes at the first ladder quality within the byte target.
+ * @param policy - resolved size-reduction controls applied when an encoding exceeds the hard limit.
+ * @param signal - optional cancellation checked around the raster work.
+ * @returns encoded request bytes within the hard byte limit.
  */
 export async function createRequestImage(
   attachment: Parameters<RasterRunner['createRequestImage']>[0],
   target: Parameters<RasterRunner['createRequestImage']>[1],
   hasAlpha: boolean,
+  policy: Parameters<RasterRunner['createRequestImage']>[3],
+  signal: Parameters<RasterRunner['createRequestImage']>[4],
 ): Promise<operations.EncodedRequestImage> {
-  return await activeRunner().createRequestImage(attachment, target, hasAlpha)
+  return await activeRunner().createRequestImage(attachment, target, hasAlpha, policy, signal)
 }

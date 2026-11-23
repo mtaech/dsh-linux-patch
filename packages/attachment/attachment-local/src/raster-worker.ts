@@ -63,6 +63,8 @@ export async function runRasterOperation(request: RasterRequest): Promise<Operat
         { data: request.data, ref: request.ref },
         request.target,
         request.hasAlpha,
+        request.policy,
+        undefined,
       )
       return {
         result: {
